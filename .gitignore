@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local secrets
+.env
+*.secret
+
+# Optional local outputs
+out/
+*.log
+
+# Do not commit actual GD passwords or raw save dumps
+CCLocalLevels.dat
+CCGameManager.dat
