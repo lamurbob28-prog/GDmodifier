@@ -1,0 +1,48 @@
+name: Cloud Save Import GMD
+
+on:
+  workflow_dispatch:
+    inputs:
+      gmd_path:
+        description: "Path to .gmd file in this repo, for example uploads/level.gmd"
+        required: true
+        default: "uploads/level.gmd"
+      gd_account_id:
+        description: "Burner Geometry Dash accountID"
+        required: true
+      level_name_override:
+        description: "Optional level name override"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  cloud-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Decode task runner
+        run: python -c "import base64, pathlib; pathlib.Path('uploader/cloud_task.py').write_bytes(base64.b64decode(pathlib.Path('uploader/cloud_task.b64').read_text()))"
+
+      - name: Patch cloud save
+        env:
+          GD_PASSWORD: ${{ secrets.GD_PASSWORD }}
+          GMD_PATH: ${{ inputs.gmd_path }}
+          GD_ACCOUNT_ID: ${{ inputs.gd_account_id }}
+          LEVEL_NAME_OVERRIDE: ${{ inputs.level_name_override }}
+        run: python uploader/cloud_task.py
+
+      - name: Upload cloud debug on failure
+        if: failure() && hashFiles('gdmodifier_cloud_debug.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdmodifier-cloud-debug
+          path: gdmodifier_cloud_debug.json
