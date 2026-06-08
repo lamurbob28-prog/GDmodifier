@@ -1,0 +1,59 @@
+name: Upload GMD to Geometry Dash on Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      gmd_path:
+        description: "Path to .gmd file in this repo"
+        required: true
+        default: "uploads/level.gmd"
+      gd_username:
+        description: "Burner Geometry Dash username"
+        required: true
+      gd_account_id:
+        description: "Burner Geometry Dash accountID"
+        required: true
+      visibility:
+        description: "Upload visibility"
+        required: true
+        type: choice
+        options:
+          - public
+          - unlisted
+        default: public
+      upload_mode:
+        description: "Upload protocol order"
+        required: true
+        type: choice
+        options:
+          - modern-first
+          - legacy-first
+        default: modern-first
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  upload:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload .gmd
+        env:
+          GD_PASSWORD: ${{ secrets.GD_PASSWORD }}
+          GMD_PATH: ${{ inputs.gmd_path }}
+          GD_USERNAME: ${{ inputs.gd_username }}
+          GD_ACCOUNT_ID: ${{ inputs.gd_account_id }}
+          VISIBILITY: ${{ inputs.visibility }}
+          UPLOAD_MODE: ${{ inputs.upload_mode }}
+        run: python uploader/upload_gmd.py
+      - name: Upload debug attempts on failure
+        if: failure() && hashFiles('gdmodifier_debug_attempts.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdmodifier-debug-attempts-windows
+          path: gdmodifier_debug_attempts.json
