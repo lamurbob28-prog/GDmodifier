@@ -16,6 +16,7 @@ ACCOUNT_URLS = [
 ]
 ACCOUNT_HEADERS = [
     {"User-Agent": "GeometryDash/2.2", "Accept": "*/*"},
+    {"User-Agent": "", "Accept": "*/*"},
     {"Accept": "*/*"},
 ]
 
@@ -24,7 +25,7 @@ def make_gjp2(secret_text: str) -> str:
     return hashlib.sha1((secret_text + "mI29fmAnxgTs").encode("utf-8")).hexdigest()
 
 
-def post_account(endpoint: str, payload: dict[str, Any]) -> list[Attempt]:
+def post_account(endpoint: str, payload: dict[str, Any], *, stop_on_negative: bool = False) -> list[Attempt]:
     encoded = urllib.parse.urlencode({k: str(v) for k, v in payload.items()}).encode("utf-8")
     attempts: list[Attempt] = []
     for base in ACCOUNT_URLS:
@@ -50,43 +51,81 @@ def post_account(endpoint: str, payload: dict[str, Any]) -> list[Attempt]:
             attempts.append(attempt)
             if status and not looks_like_block(text):
                 compact = text.strip()
-                if compact == "1" or compact.startswith("-") or ";" in compact:
+                if compact == "1" or ";" in compact:
+                    return attempts
+                if stop_on_negative and compact.startswith("-"):
                     return attempts
     return attempts
 
 
+def account_payload_variants(account_id: str, secret_text: str):
+    auth = make_gjp2(secret_text)
+    return [
+        {
+            "accountID": account_id,
+            "gjp2": auth,
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp2": auth,
+            "gameVersion": "22",
+            "binaryVersion": "48",
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp2": auth,
+            "gameVersion": "22",
+            "binaryVersion": "48",
+            "gdw": "0",
+            "dvs": "2",
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp2": auth,
+            "gameVersion": "21",
+            "binaryVersion": "35",
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp2": auth,
+            "gameVersion": "22",
+            "binaryVersion": "48",
+            "udid": "S" + account_id,
+            "uuid": account_id,
+            "dvs": "2",
+            "secret": ACCOUNT_SECRET,
+        },
+    ]
+
+
 def sync_save(account_id: str, secret_text: str):
-    payload = {
-        "accountID": account_id,
-        "gjp2": make_gjp2(secret_text),
-        "gameVersion": "22",
-        "binaryVersion": "48",
-        "udid": account_id,
-        "uuid": account_id,
-        "dvs": "2",
-        "secret": ACCOUNT_SECRET,
-    }
-    attempts = post_account("syncGJAccountNew.php", payload)
-    for a in attempts:
-        text = a.text.strip()
-        if text and not a.blocked_looking and not text.startswith("-") and ";" in text:
-            return text.split(";"), attempts
-    return [], attempts
+    all_attempts: list[Attempt] = []
+    for payload in account_payload_variants(account_id, secret_text):
+        attempts = post_account("syncGJAccountNew.php", payload, stop_on_negative=False)
+        all_attempts.extend(attempts)
+        for a in attempts:
+            text = a.text.strip()
+            if text and not a.blocked_looking and not text.startswith("-") and ";" in text:
+                return text.split(";"), all_attempts
+    return [], all_attempts
 
 
 def store_save(account_id: str, secret_text: str, parts: list[str]):
     if len(parts) < 2:
         return False, []
-    payload = {
-        "accountID": account_id,
-        "gjp2": make_gjp2(secret_text),
-        "gameVersion": parts[2] if len(parts) > 2 and parts[2] else "22",
-        "binaryVersion": parts[3] if len(parts) > 3 and parts[3] else "48",
-        "udid": account_id,
-        "uuid": account_id,
-        "dvs": "2",
-        "saveData": parts[0] + ";" + parts[1],
-        "secret": ACCOUNT_SECRET,
-    }
-    attempts = post_account("backupGJAccountNew.php", payload)
-    return any(a.text.strip() == "1" and not a.blocked_looking for a in attempts), attempts
+    all_attempts: list[Attempt] = []
+    save_data = parts[0] + ";" + parts[1]
+    for base_payload in account_payload_variants(account_id, secret_text):
+        payload = dict(base_payload)
+        payload["gameVersion"] = parts[2] if len(parts) > 2 and parts[2] else payload.get("gameVersion", "22")
+        payload["binaryVersion"] = parts[3] if len(parts) > 3 and parts[3] else payload.get("binaryVersion", "48")
+        payload["saveData"] = save_data
+        attempts = post_account("backupGJAccountNew.php", payload, stop_on_negative=False)
+        all_attempts.extend(attempts)
+        if any(a.text.strip() == "1" and not a.blocked_looking for a in attempts):
+            return True, all_attempts
+    return False, all_attempts
