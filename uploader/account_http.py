@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import time
 import urllib.error
@@ -7,7 +8,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from gd_proto import Attempt, looks_like_block
+from gd_proto import Attempt, looks_like_block, xor_cipher
 
 ACCOUNT_SECRET = "Wmfv3899gc9"
 ACCOUNT_URLS = [
@@ -21,8 +22,16 @@ ACCOUNT_HEADERS = [
 ]
 
 
+def b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
 def make_gjp2(secret_text: str) -> str:
     return hashlib.sha1((secret_text + "mI29fmAnxgTs").encode("utf-8")).hexdigest()
+
+
+def make_gjp(secret_text: str) -> str:
+    return b64url(xor_cipher(secret_text, "37526").encode("utf-8"))
 
 
 def post_account(endpoint: str, payload: dict[str, Any], *, stop_on_negative: bool = False) -> list[Attempt]:
@@ -59,23 +68,50 @@ def post_account(endpoint: str, payload: dict[str, Any], *, stop_on_negative: bo
 
 
 def account_payload_variants(account_id: str, secret_text: str):
-    auth = make_gjp2(secret_text)
+    modern = make_gjp2(secret_text)
+    legacy = make_gjp(secret_text)
     return [
         {
             "accountID": account_id,
-            "gjp2": auth,
+            "gjp2": modern,
             "secret": ACCOUNT_SECRET,
         },
         {
             "accountID": account_id,
-            "gjp2": auth,
+            "gjp2": modern,
+            "gjp": legacy,
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp": legacy,
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp2": modern,
             "gameVersion": "22",
             "binaryVersion": "48",
             "secret": ACCOUNT_SECRET,
         },
         {
             "accountID": account_id,
-            "gjp2": auth,
+            "gjp2": modern,
+            "gjp": legacy,
+            "gameVersion": "22",
+            "binaryVersion": "48",
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp": legacy,
+            "gameVersion": "21",
+            "binaryVersion": "35",
+            "secret": ACCOUNT_SECRET,
+        },
+        {
+            "accountID": account_id,
+            "gjp2": modern,
             "gameVersion": "22",
             "binaryVersion": "48",
             "gdw": "0",
@@ -84,14 +120,7 @@ def account_payload_variants(account_id: str, secret_text: str):
         },
         {
             "accountID": account_id,
-            "gjp2": auth,
-            "gameVersion": "21",
-            "binaryVersion": "35",
-            "secret": ACCOUNT_SECRET,
-        },
-        {
-            "accountID": account_id,
-            "gjp2": auth,
+            "gjp2": modern,
             "gameVersion": "22",
             "binaryVersion": "48",
             "udid": "S" + account_id,
