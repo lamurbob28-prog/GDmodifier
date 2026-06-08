@@ -29,8 +29,8 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Decode task runner
-        run: python -c "import base64, pathlib; pathlib.Path('uploader/cloud_task.py').write_bytes(base64.b64decode(pathlib.Path('uploader/cloud_task.b64').read_text()))"
+      - name: Prepare task runner
+        run: cp uploader/cloud_task.b64 uploader/cloud_task.py
 
       - name: Patch cloud save
         env:
