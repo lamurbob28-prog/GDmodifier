@@ -1,0 +1,76 @@
+from __future__ import annotations
+import os, sys, json
+from pathlib import Path
+from account_http import sync_save, store_save
+from level_merge import decode_text, encode_text, merge_level
+
+def env(n, d=""):
+    return os.environ.get(n, d).strip()
+
+def summary(s):
+    p = os.environ.get("GITHUB_STEP_SUMMARY")
+    if p:
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(s)
+
+def dump(attempts):
+    Path("gdmodifier_cloud_debug.json").write_text(json.dumps([
+        {"endpoint": a.endpoint, "status": a.status, "ua": a.user_agent, "blocked": a.blocked_looking, "preview": a.preview}
+        for a in attempts
+    ], indent=2), encoding="utf-8")
+
+def die(msg, attempts=None):
+    print("ERROR:", msg)
+    summary("## Cloud import failed\n\n" + msg + "\n")
+    if attempts:
+        dump(attempts)
+    sys.exit(1)
+
+def show(label, attempts):
+    print("\n---", label, "---")
+    for a in attempts:
+        print(f"{a.endpoint} status={a.status} ua={a.user_agent!r} blocked={a.blocked_looking} preview={a.preview}")
+
+def main():
+    gmd_path = env("GMD_PATH")
+    account_id = env("GD_ACCOUNT_ID")
+    gd_secret = os.environ.get("GD_PASSWORD", "")
+    rename = env("LEVEL_NAME_OVERRIDE")
+    if not gmd_path:
+        die("Missing gmd_path.")
+    if not account_id:
+        die("Missing gd_account_id.")
+    if not gd_secret:
+        die("Missing GD-PASSWORD repository secret.")
+    if not Path(gmd_path).exists():
+        die("Could not find .gmd file: " + gmd_path)
+
+    attempts_all = []
+    print("Syncing account save...")
+    parts, attempts = sync_save(account_id, gd_secret)
+    attempts_all += attempts
+    show("sync", attempts)
+    if len(parts) < 2:
+        die("Could not sync cloud save. Log into the burner account in Geometry Dash and press Save once, then rerun.", attempts_all)
+
+    try:
+        local_xml = decode_text(parts[1])
+        patched_xml, slot, title = merge_level(local_xml, gmd_path, rename)
+        parts[1] = encode_text(patched_xml)
+    except Exception as exc:
+        die("Could not patch local levels: " + repr(exc), attempts_all)
+
+    print("Saving patched data...")
+    ok, attempts = store_save(account_id, gd_secret, parts)
+    attempts_all += attempts
+    show("store", attempts)
+    if not ok:
+        die("Patched data was built, but the account server did not accept it.", attempts_all)
+
+    print("SUCCESS")
+    print("Level:", title)
+    print("Slot:", slot)
+    summary("## SUCCESS\n\nInjected `" + title + "` into the burner account cloud save.\n\nOpen Geometry Dash on that burner account and press **Load**. Then check **Create**.\n")
+
+if __name__ == "__main__":
+    main()
