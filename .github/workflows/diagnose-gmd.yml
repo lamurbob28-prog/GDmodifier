@@ -1,0 +1,62 @@
+name: Diagnose GMD
+
+on:
+  workflow_dispatch:
+    inputs:
+      gmd_path:
+        description: "Path to .gmd file in this repo"
+        required: true
+        default: "uploads/level.gmd"
+      gd_username:
+        description: "Optional username used only for dry-run fields"
+        required: false
+        default: "diagnostic_user"
+      gd_account_id:
+        description: "Optional accountID used only for dry-run fields"
+        required: false
+        default: "1"
+      visibility:
+        description: "Dry-run visibility"
+        required: true
+        type: choice
+        options:
+          - public
+          - unlisted
+        default: public
+      upload_mode:
+        description: "Dry-run payload order"
+        required: true
+        type: choice
+        options:
+          - modern-first
+          - legacy-first
+        default: modern-first
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run diagnostic dry run
+        env:
+          GMD_PATH: ${{ inputs.gmd_path }}
+          GD_USERNAME: ${{ inputs.gd_username }}
+          GD_ACCOUNT_ID: ${{ inputs.gd_account_id }}
+          VISIBILITY: ${{ inputs.visibility }}
+          UPLOAD_MODE: ${{ inputs.upload_mode }}
+        run: python uploader/diagnose_gmd.py
