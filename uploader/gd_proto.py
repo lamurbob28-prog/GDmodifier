@@ -183,6 +183,16 @@ def as_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def optional_int(value: Any) -> Optional[int]:
+    text = str(value or "").strip()
+    if text == "":
+        return None
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise ValueError(f"Expected integer override, got {text!r}.") from exc
+
+
 def parse_colon_map(text: str) -> Dict[str, str]:
     clean = str(text or "").split("#")[0]
     parts = clean.split(":")
@@ -303,6 +313,9 @@ def build_upload_payloads(
     level_name_override: str = "",
     description_override: str = "",
     visibility: str = "public",
+    force_stock_song: bool = False,
+    song_id_override: str = "",
+    audio_track_override: str = "",
 ) -> List[Tuple[str, Dict[str, Any]]]:
     if mode not in {"modern-first", "legacy-first"}:
         raise ValueError("upload_mode must be modern-first or legacy-first.")
@@ -315,8 +328,21 @@ def build_upload_payloads(
 
     level_name = (level_name_override.strip() or str(data.get("k2") or "Imported GMD"))[:40]
     level_desc = b64desc(description_override.strip()) if description_override.strip() else str(data.get("k3") or "")
-    song_id = as_int(data.get("k45"), 0)
-    audio_track = 0 if song_id > 0 else as_int(data.get("k8"), 0)
+
+    song_override = optional_int(song_id_override)
+    track_override = optional_int(audio_track_override)
+    original_song_id = as_int(data.get("k45"), 0)
+    original_audio_track = as_int(data.get("k8"), 0)
+
+    if force_stock_song:
+        song_id = 0
+        audio_track = track_override if track_override is not None else 0
+    elif song_override is not None:
+        song_id = song_override
+        audio_track = track_override if track_override is not None else (0 if song_id > 0 else original_audio_track)
+    else:
+        song_id = original_song_id
+        audio_track = track_override if track_override is not None else (0 if song_id > 0 else original_audio_track)
 
     common = {
         "accountID": str(account_id),
