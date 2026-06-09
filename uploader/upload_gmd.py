@@ -6,15 +6,20 @@ import re
 import sys
 from pathlib import Path
 
-from gd_proto import build_upload_payloads, lookup_account_id, parse_gmd, post_boomlings
+from gd_proto import SECRET, build_upload_payloads, lookup_account_id, parse_gmd, post_boomlings
+
+MIN_REASONABLE_LEVEL_ID = 1_000_000
 
 
 def getenv(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
-def as_bool(value: str) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+def as_bool(value: str, default: bool = False) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return default
+    return text in {"1", "true", "yes", "y", "on"}
 
 
 def summary(text: str) -> None:
@@ -58,6 +63,71 @@ def print_attempts(title, attempts):
         )
 
 
+def looks_like_level_payload(text: str, level_id: str) -> bool:
+    body = str(text or "").strip()
+    if not body or body.startswith("-"):
+        return False
+    lowered = body[:1600].lower()
+    if "<!doctype html" in lowered or "cloudflare" in lowered or "access denied" in lowered:
+        return False
+    if level_id in body and ":" in body:
+        return True
+    return False
+
+
+def verify_level_id(level_id: str, account_id: str) -> tuple[bool, list]:
+    """Try to prove a returned upload number is actually loadable.
+
+    The upload endpoint can return positive numbers that are not usable level IDs.
+    Because apparently a number is not always an answer, it is sometimes just a
+    little rectangle of lies.
+    """
+    attempts_all = []
+
+    lookup_payload = {
+        "gameVersion": "22",
+        "binaryVersion": "48",
+        "gdw": "0",
+        "type": "0",
+        "str": level_id,
+        "diff": "-",
+        "len": "-",
+        "page": "0",
+        "total": "0",
+        "uncompleted": "0",
+        "onlyCompleted": "0",
+        "featured": "0",
+        "original": "0",
+        "twoPlayer": "0",
+        "coins": "0",
+        "epic": "0",
+        "secret": SECRET,
+    }
+    attempts = post_boomlings("getGJLevels21.php", lookup_payload, stop_on_compact=False)
+    attempts_all.extend(attempts)
+    if any(looks_like_level_payload(a.text, level_id) for a in attempts):
+        return True, attempts_all
+
+    download_payload = {
+        "gameVersion": "22",
+        "binaryVersion": "48",
+        "gdw": "0",
+        "levelID": level_id,
+        "inc": "0",
+        "extras": "0",
+        "secret": SECRET,
+    }
+    if account_id:
+        download_payload["accountID"] = str(account_id)
+
+    attempts = post_boomlings("downloadGJLevel22.php", download_payload, stop_on_compact=False)
+    attempts_all.extend(attempts)
+    if any(looks_like_level_payload(a.text, level_id) for a in attempts):
+        return True, attempts_all
+
+    return False, attempts_all
+
+
 def main() -> None:
     gmd_path = getenv("GMD_PATH")
     username = getenv("GD_USERNAME")
@@ -68,6 +138,7 @@ def main() -> None:
     force_stock_song = as_bool(getenv("FORCE_STOCK_SONG"))
     song_id_override = getenv("SONG_ID_OVERRIDE")
     audio_track_override = getenv("AUDIO_TRACK_OVERRIDE")
+    verify_upload = as_bool(getenv("VERIFY_UPLOADED_ID"), True)
 
     if not gmd_path:
         fail("Missing gmd_path input.")
@@ -100,8 +171,10 @@ def main() -> None:
     print("Force stock song:", force_stock_song)
     print("Song ID override:", song_id_override or "(none)")
     print("Audio track override:", audio_track_override or "(none)")
+    print("Verify returned level ID:", verify_upload)
 
     all_attempts = []
+    candidate_ids = []
     if not account_id:
         print("No accountID supplied. Trying lookup...")
         account_id, attempts = lookup_account_id(username)
@@ -139,14 +212,37 @@ def main() -> None:
         for a in attempts:
             response = a.text.strip()
             if re.fullmatch(r"[0-9]+", response) and int(response) > 0:
+                candidate_ids.append(response)
+                if int(response) < MIN_REASONABLE_LEVEL_ID:
+                    print(
+                        "Rejected candidate response as fake/too-small level ID:",
+                        response,
+                    )
+                    continue
+
+                if verify_upload:
+                    print("Verifying returned level ID:", response)
+                    ok, verify_attempts = verify_level_id(response, str(account_id))
+                    all_attempts.extend(verify_attempts)
+                    print_attempts("verify " + response, verify_attempts)
+                    if not ok:
+                        print("Returned number did not verify as a loadable/searchable level:", response)
+                        continue
+
                 print(f"::notice title=Geometry Dash Level ID::{response}")
-                print("SUCCESS. Level ID:", response)
+                print("SUCCESS. Verified Level ID:" if verify_upload else "SUCCESS. Level ID:", response)
                 summary(
                     f"## SUCCESS\n\n**Geometry Dash Level ID:** `{response}`\n\n"
                     "Open Geometry Dash → Search → enter that ID.\n"
                 )
                 return
 
+    if candidate_ids:
+        fail(
+            "Upload returned positive number(s), but none verified as a real loadable level ID: "
+            + ", ".join(candidate_ids),
+            all_attempts,
+        )
     fail("Upload failed. Check attempt previews and debug artifact.", all_attempts)
 
 
