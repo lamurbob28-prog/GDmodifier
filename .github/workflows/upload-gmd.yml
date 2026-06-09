@@ -47,6 +47,22 @@ on:
           - windows-latest
           - macos-latest
         default: ubuntu-latest
+      force_stock_song:
+        description: "Set songID to 0 and use stock audioTrack"
+        required: true
+        type: choice
+        options:
+          - "false"
+          - "true"
+        default: "false"
+      song_id_override:
+        description: "Optional songID override. Leave blank normally."
+        required: false
+        default: ""
+      audio_track_override:
+        description: "Optional stock audioTrack override. Leave blank normally."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -76,6 +92,9 @@ jobs:
           echo "Visibility: ${{ inputs.visibility }}"
           echo "Upload mode: ${{ inputs.upload_mode }}"
           echo "Runner: ${{ inputs.runner }}"
+          echo "Force stock song: ${{ inputs.force_stock_song }}"
+          echo "Song ID override: ${{ inputs.song_id_override }}"
+          echo "Audio track override: ${{ inputs.audio_track_override }}"
 
       - name: Upload .gmd to Geometry Dash
         env:
@@ -87,6 +106,9 @@ jobs:
           DESCRIPTION_OVERRIDE: ${{ inputs.description_override }}
           VISIBILITY: ${{ inputs.visibility }}
           UPLOAD_MODE: ${{ inputs.upload_mode }}
+          FORCE_STOCK_SONG: ${{ inputs.force_stock_song }}
+          SONG_ID_OVERRIDE: ${{ inputs.song_id_override }}
+          AUDIO_TRACK_OVERRIDE: ${{ inputs.audio_track_override }}
         run: python uploader/upload_gmd.py
 
       - name: Upload debug attempts on failure
