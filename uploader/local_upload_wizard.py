@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import getpass
 import os
+import subprocess
+import time
 from pathlib import Path
 
 import upload_gmd
 from gd_proto import parse_gmd
+
+REMOTE_REF = "origin/main"
 
 
 def ask(prompt: str, default: str = "") -> str:
@@ -22,57 +26,49 @@ def ask_choice(prompt: str, choices: list[str], default: str) -> str:
         print("Choose one of: " + ", ".join(choices))
 
 
-def find_gmd_files() -> list[Path]:
-    uploads = Path("uploads")
-    if not uploads.exists():
-        return []
-    files = sorted(list(uploads.glob("*.gmd")) + list(uploads.glob("*.GMD")))
-    # Remove duplicates on case-insensitive weirdness.
-    out: list[Path] = []
-    seen: set[str] = set()
-    for file in files:
-        key = str(file)
-        if key not in seen:
-            seen.add(key)
-            out.append(file)
-    return out
+def git_text(args: list[str]) -> str:
+    proc = subprocess.run(["git", *args], text=True, capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "git command failed").strip())
+    return proc.stdout
 
 
-def choose_gmd_path() -> str:
-    files = find_gmd_files()
-    print("Step 1: choose the .gmd file")
-
-    if files:
-        for index, file in enumerate(files, start=1):
-            print(f"{index}. {file}")
-        print("")
-        while True:
-            choice = input("Type file number, or type a path manually: ").strip()
-            if not choice and len(files) == 1:
-                return str(files[0])
-            if choice.isdigit():
-                index = int(choice)
-                if 1 <= index <= len(files):
-                    return str(files[index - 1])
-                print("That number is not in the list.")
-                continue
-            if choice:
-                path = Path(choice)
-                if path.exists():
-                    return str(path)
-                print(f"File not found: {choice}")
-                continue
-            print("Pick a number from the list. No more accidental default-file nonsense.")
-
-    print("No .gmd files found in uploads/.")
-    while True:
-        choice = input("Type the .gmd path manually: ").strip()
-        if choice and Path(choice).exists():
-            return choice
-        print("File not found. Check with: ls -lh uploads")
+def git_bytes(args: list[str]) -> bytes:
+    proc = subprocess.run(["git", *args], capture_output=True)
+    if proc.returncode != 0:
+        msg = (proc.stderr or proc.stdout or b"git command failed").decode("utf-8", errors="replace")
+        raise RuntimeError(msg.strip())
+    return proc.stdout
 
 
-def detected_level_name(gmd_path: str) -> str:
+def fetch_github_uploads() -> None:
+    print("Fetching GitHub uploads from main...")
+    git_text(["fetch", "origin", "main", "--quiet"])
+
+
+def github_upload_files() -> list[str]:
+    fetch_github_uploads()
+    output = git_text(["ls-tree", "-r", "--name-only", REMOTE_REF, "--", "uploads"])
+    files = []
+    for line in output.splitlines():
+        clean = line.strip()
+        if clean.lower().endswith(".gmd"):
+            files.append(clean)
+    return sorted(files)
+
+
+def copy_from_github_upload(path: str) -> str:
+    data = git_bytes(["show", f"{REMOTE_REF}:{path}"])
+    out_dir = Path("generated_uploads")
+    out_dir.mkdir(exist_ok=True)
+    safe_name = Path(path).name
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"{stamp}_{safe_name}"
+    out_path.write_bytes(data)
+    return str(out_path)
+
+
+def detected_level_name(gmd_path: str | Path) -> str:
     try:
         data = parse_gmd(gmd_path)
         return str(data.get("k2") or Path(gmd_path).stem)[:40]
@@ -80,15 +76,46 @@ def detected_level_name(gmd_path: str) -> str:
         return Path(gmd_path).stem[:40]
 
 
-def main() -> None:
-    print("GDmodifier local upload wizard")
-    print("This is the classic working uploader, now with file selection so it does not default-trap you into DaB00bs.")
+def choose_github_gmd() -> str:
+    print("Step 1: choose the .gmd file from GitHub main/uploads")
+    try:
+        files = github_upload_files()
+    except Exception as exc:
+        print("ERROR: could not read GitHub uploads folder.")
+        print(exc)
+        raise SystemExit(1)
+
+    if not files:
+        print("ERROR: no .gmd files found in GitHub main/uploads.")
+        raise SystemExit(1)
+
+    for index, file in enumerate(files, start=1):
+        print(f"{index}. {file}")
     print("")
 
-    gmd_path = choose_gmd_path()
+    while True:
+        choice = input("Type file number: ").strip()
+        if choice.isdigit():
+            index = int(choice)
+            if 1 <= index <= len(files):
+                selected = files[index - 1]
+                local_copy = copy_from_github_upload(selected)
+                print("GitHub file:", selected)
+                print("Generated local copy:", local_copy)
+                return local_copy
+        print("Pick a number from the list.")
+
+
+def main() -> None:
+    print("GDmodifier local upload wizard")
+    print("This uploader ONLY selects .gmd files tracked in GitHub main/uploads.")
+    print("It ignores leftover local uploads/ files and creates a generated copy before uploading.")
+    print("")
+
+    gmd_path = choose_github_gmd()
     level_name_default = detected_level_name(gmd_path)
     print("")
-    print("Selected file:", gmd_path)
+    print("Selected generated file:", gmd_path)
     print("Detected level name:", level_name_default)
     print("")
 
@@ -103,8 +130,7 @@ def main() -> None:
 
     path = Path(gmd_path)
     if not path.exists():
-        print(f"ERROR: file not found: {gmd_path}")
-        print("Check your uploads folder with: ls -lh uploads")
+        print(f"ERROR: generated file not found: {gmd_path}")
         raise SystemExit(1)
 
     gd_password = getpass.getpass("GD burner password: ")
