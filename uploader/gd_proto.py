@@ -1,7 +1,7 @@
 """Geometry Dash protocol helpers for GDmodifier.
 
-This module only uses Python's standard library because GitHub Actions should not
-need pip just to suffer through old PHP endpoints. What a blessed sentence.
+This module uses only Python's standard library so GitHub Actions can run without a
+dependency install step.
 """
 
 from __future__ import annotations
@@ -70,14 +70,14 @@ def old_gjp(password: str) -> str:
 
 
 def gjp2(password: str) -> str:
-    """Modern-ish GD auth hash used by newer clients."""
+    """Newer GD auth hash used by current clients."""
     return hashlib.sha1((password + "mI29fmAnxgTs").encode("utf-8")).hexdigest()
 
 
 def upload_seed(level_string: str, chars: int = 50) -> str:
     if len(level_string) < chars:
         return level_string
-    step = len(level_string) // chars
+    step = max(1, len(level_string) // chars)
     return level_string[::step][:chars]
 
 
@@ -137,16 +137,38 @@ def _parse_dict(elem: ET.Element) -> Dict[str, Any]:
     return out
 
 
-def parse_gmd(path: str | Path) -> Dict[str, Any]:
-    path = Path(path)
-    text = path.read_text(encoding="utf-8", errors="replace")
-    root = ET.fromstring(text)
-    root_dict = root.find("dict") or root.find("d")
+def first_plist_dict(root: ET.Element) -> ET.Element:
+    root_dict = root.find("dict")
+    if root_dict is None:
+        root_dict = root.find("d")
     if root_dict is None:
         raise ValueError("No plist dictionary found in .gmd.")
-    data = _parse_dict(root_dict)
-    if "k2" not in data or "k4" not in data:
-        raise ValueError("Missing k2/k4; this does not look like a normal .gmd export.")
+    return root_dict
+
+
+def parse_gmd(path: str | Path) -> Dict[str, Any]:
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ValueError(f"Could not read .gmd file: {exc}") from exc
+
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise ValueError(
+            "Could not parse .gmd as XML/plist. Re-export the level as a plist-style "
+            ".gmd file, not a raw/compressed level string."
+        ) from exc
+
+    data = _parse_dict(first_plist_dict(root))
+    missing = [key for key in ("k2", "k4") if key not in data]
+    if missing:
+        raise ValueError(
+            "Missing required GD level keys "
+            + ", ".join(missing)
+            + "; this does not look like a normal .gmd export."
+        )
     return data
 
 
@@ -185,6 +207,16 @@ def looks_like_block(text: str) -> bool:
     )
 
 
+def is_positive_int_response(text: str) -> bool:
+    stripped = str(text or "").strip()
+    return bool(re.fullmatch(r"[0-9]+", stripped) and int(stripped) > 0)
+
+
+def is_colon_data_response(text: str) -> bool:
+    stripped = str(text or "").strip()
+    return ":" in stripped and not stripped.startswith("-") and not looks_like_block(stripped)
+
+
 def post_boomlings(endpoint: str, payload: Dict[str, Any], *, stop_on_compact: bool = False) -> List[Attempt]:
     encoded = urllib.parse.urlencode({k: str(v) for k, v in payload.items()}).encode("utf-8")
     attempts: List[Attempt] = []
@@ -202,9 +234,10 @@ def post_boomlings(endpoint: str, payload: Dict[str, Any], *, stop_on_compact: b
             except urllib.error.HTTPError as exc:
                 body = exc.read().decode("utf-8", errors="replace").strip()
                 status = exc.code
-            except Exception as exc:  # noqa: BLE001 - log every miserable endpoint failure
+            except Exception as exc:  # noqa: BLE001 - we want every endpoint failure in the debug artifact
                 body = repr(exc)
                 status = 0
+
             elapsed_ms = int((time.monotonic() - start) * 1000)
             attempt = Attempt(
                 endpoint=endpoint,
@@ -218,7 +251,11 @@ def post_boomlings(endpoint: str, payload: Dict[str, Any], *, stop_on_compact: b
 
             if stop_on_compact and status and not attempt.blocked_looking:
                 stripped = body.strip()
-                if re.fullmatch(r"[0-9-]+", stripped) or ":" in stripped:
+                # Positive numbers are successful upload IDs. Colon payloads are
+                # successful lookup-style responses. Do not stop on -1; that just
+                # means this variant was rejected and the next endpoint/header
+                # combination may still work.
+                if is_positive_int_response(stripped) or is_colon_data_response(stripped):
                     return attempts
 
     return attempts
@@ -267,6 +304,11 @@ def build_upload_payloads(
     description_override: str = "",
     visibility: str = "public",
 ) -> List[Tuple[str, Dict[str, Any]]]:
+    if mode not in {"modern-first", "legacy-first"}:
+        raise ValueError("upload_mode must be modern-first or legacy-first.")
+    if visibility not in {"public", "unlisted"}:
+        raise ValueError("visibility must be public or unlisted.")
+
     level_string = str(data.get("k4") or "")
     if len(level_string) < 20:
         raise ValueError("Bad/missing k4 levelString.")
