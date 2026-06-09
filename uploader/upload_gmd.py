@@ -13,6 +13,10 @@ def getenv(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def as_bool(value: str) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def summary(text: str) -> None:
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:
@@ -61,6 +65,9 @@ def main() -> None:
     secret = os.environ.get("GD_PASSWORD", "")
     mode = getenv("UPLOAD_MODE", "modern-first")
     visibility = getenv("VISIBILITY", "public")
+    force_stock_song = as_bool(getenv("FORCE_STOCK_SONG"))
+    song_id_override = getenv("SONG_ID_OVERRIDE")
+    audio_track_override = getenv("AUDIO_TRACK_OVERRIDE")
 
     if not gmd_path:
         fail("Missing gmd_path input.")
@@ -88,6 +95,11 @@ def main() -> None:
     print("Creator field:", data.get("k5", "(none)"))
     print("Compressed levelString length:", len(str(data.get("k4") or "")))
     print("Objects field k48:", data.get("k48", 0))
+    print("Original songID k45:", data.get("k45", 0))
+    print("Original audioTrack k8:", data.get("k8", 0))
+    print("Force stock song:", force_stock_song)
+    print("Song ID override:", song_id_override or "(none)")
+    print("Audio track override:", audio_track_override or "(none)")
 
     all_attempts = []
     if not account_id:
@@ -110,12 +122,17 @@ def main() -> None:
             level_name_override=getenv("LEVEL_NAME_OVERRIDE"),
             description_override=getenv("DESCRIPTION_OVERRIDE"),
             visibility=visibility,
+            force_stock_song=force_stock_song,
+            song_id_override=song_id_override,
+            audio_track_override=audio_track_override,
         )
     except Exception as exc:  # noqa: BLE001 - user-facing workflow error
         fail(f"Could not build upload payload: {exc}", all_attempts)
 
     for name, payload in payloads:
         print("Uploading with variant:", name)
+        print("Payload songID:", payload.get("songID"))
+        print("Payload audioTrack:", payload.get("audioTrack"))
         attempts = post_boomlings("uploadGJLevel21.php", payload, stop_on_compact=True)
         all_attempts.extend(attempts)
         print_attempts("upload " + name, attempts)
