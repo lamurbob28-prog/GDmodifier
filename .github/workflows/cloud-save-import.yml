@@ -1,4 +1,4 @@
-name: Cloud Save Import GMD
+name: Import GMD
 
 on:
   workflow_dispatch:
@@ -22,17 +22,20 @@ env:
   PYTHONUNBUFFERED: "1"
 
 jobs:
-  cloud-import:
+  import-gmd:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
+
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Prepare task runner
-        run: cp uploader/cloud_task.b64 uploader/cloud_task.py
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
 
-      - name: Patch cloud save
+      - name: Run import task
         env:
           GD_PASSWORD: ${{ secrets.GD_PASSWORD }}
           GMD_PATH: ${{ inputs.gmd_path }}
@@ -40,7 +43,7 @@ jobs:
           LEVEL_NAME_OVERRIDE: ${{ inputs.level_name_override }}
         run: python uploader/cloud_task.py
 
-      - name: Upload cloud debug on failure
+      - name: Upload debug on failure
         if: failure() && hashFiles('gdmodifier_cloud_debug.json') != ''
         uses: actions/upload-artifact@v4
         with:
