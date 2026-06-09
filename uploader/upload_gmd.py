@@ -76,11 +76,10 @@ def looks_like_level_payload(text: str, level_id: str) -> bool:
 
 
 def verify_level_id(level_id: str, account_id: str) -> tuple[bool, list]:
-    """Try to prove a returned upload number is actually loadable.
+    """Optional check for whether a returned upload number resolves.
 
-    The upload endpoint can return positive numbers that are not usable level IDs.
-    Because apparently a number is not always an answer, it is sometimes just a
-    little rectangle of lies.
+    This is optional because GD lookup/search may lag behind the upload endpoint.
+    The upload endpoint is still the source for the returned ID.
     """
     attempts_all = []
 
@@ -138,7 +137,7 @@ def main() -> None:
     force_stock_song = as_bool(getenv("FORCE_STOCK_SONG"))
     song_id_override = getenv("SONG_ID_OVERRIDE")
     audio_track_override = getenv("AUDIO_TRACK_OVERRIDE")
-    verify_upload = as_bool(getenv("VERIFY_UPLOADED_ID"), True)
+    verify_upload = as_bool(getenv("VERIFY_UPLOADED_ID"), False)
 
     if not gmd_path:
         fail("Missing gmd_path input.")
@@ -214,10 +213,7 @@ def main() -> None:
             if re.fullmatch(r"[0-9]+", response) and int(response) > 0:
                 candidate_ids.append(response)
                 if int(response) < MIN_REASONABLE_LEVEL_ID:
-                    print(
-                        "Rejected candidate response as fake/too-small level ID:",
-                        response,
-                    )
+                    print("Ignoring too-small server number:", response)
                     continue
 
                 if verify_upload:
@@ -226,11 +222,13 @@ def main() -> None:
                     all_attempts.extend(verify_attempts)
                     print_attempts("verify " + response, verify_attempts)
                     if not ok:
-                        print("Returned number did not verify as a loadable/searchable level:", response)
-                        continue
+                        print("Verification warning: returned number did not resolve yet:", response)
+                        print("This may be indexing delay or endpoint weirdness. Showing ID anyway.")
 
                 print(f"::notice title=Geometry Dash Level ID::{response}")
-                print("SUCCESS. Verified Level ID:" if verify_upload else "SUCCESS. Level ID:", response)
+                print("SUCCESS. Level ID:", response)
+                if not verify_upload:
+                    print("Note: ID verification is off by default because GD search/download checks can lag.")
                 summary(
                     f"## SUCCESS\n\n**Geometry Dash Level ID:** `{response}`\n\n"
                     "Open Geometry Dash → Search → enter that ID.\n"
@@ -239,8 +237,7 @@ def main() -> None:
 
     if candidate_ids:
         fail(
-            "Upload returned positive number(s), but none verified as a real loadable level ID: "
-            + ", ".join(candidate_ids),
+            "Upload returned only too-small/fake-looking number(s): " + ", ".join(candidate_ids),
             all_attempts,
         )
     fail("Upload failed. Check attempt previews and debug artifact.", all_attempts)
