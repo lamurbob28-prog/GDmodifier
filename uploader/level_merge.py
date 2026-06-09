@@ -6,17 +6,22 @@ import gzip
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from gd_proto import as_int, parse_gmd
+
+from gd_proto import as_int, first_plist_dict, parse_gmd
 
 
 def decode_text(value: str) -> str:
     s = str(value).strip()
     s += "=" * (-len(s) % 4)
-    return gzip.decompress(base64.urlsafe_b64decode(s.encode("ascii"))).decode("utf-8", errors="replace")
+    try:
+        raw = base64.urlsafe_b64decode(s.encode("ascii"))
+        return gzip.decompress(raw).decode("utf-8", errors="replace")
+    except Exception as exc:  # noqa: BLE001 - this becomes a workflow error
+        raise ValueError("cloud save local-level data is not valid gzip/base64 text") from exc
 
 
 def encode_text(value: str) -> str:
-    return base64.urlsafe_b64encode(gzip.compress(value.encode("utf-8"))).decode("ascii")
+    return base64.urlsafe_b64encode(gzip.compress(value.encode("utf-8"))).decode("ascii").rstrip("=")
 
 
 def children(elem: ET.Element):
@@ -24,10 +29,7 @@ def children(elem: ET.Element):
 
 
 def first_dict(root: ET.Element) -> ET.Element:
-    found = root.find("dict") or root.find("d")
-    if found is None:
-        raise ValueError("missing dictionary")
-    return found
+    return first_plist_dict(root)
 
 
 def value_after_key(d: ET.Element, key: str):
@@ -45,8 +47,7 @@ def put_value(d: ET.Element, key: str, tag: str, text: str | None = None):
         val = ET.SubElement(d, tag)
     else:
         val.tag = tag
-    if text is not None:
-        val.text = text
+    val.text = text
     return val
 
 
@@ -73,11 +74,19 @@ def next_name(levels: ET.Element):
 
 
 def merge_level(local_xml: str, gmd_path: str | Path, rename: str = ""):
-    local = ET.fromstring(local_xml)
+    try:
+        local = ET.fromstring(local_xml)
+    except ET.ParseError as exc:
+        raise ValueError("cloud save local-level XML could not be parsed") from exc
+
     levels = level_root(first_dict(local))
     item_key, item_index = next_name(levels)
 
-    gmd_root = ET.parse(str(gmd_path)).getroot()
+    try:
+        gmd_root = ET.parse(str(gmd_path)).getroot()
+    except ET.ParseError as exc:
+        raise ValueError("the .gmd file could not be parsed as XML/plist") from exc
+
     level = copy.deepcopy(first_dict(gmd_root))
     gmd_data = parse_gmd(gmd_path)
     title = (rename.strip() or str(gmd_data.get("k2") or "Imported GMD"))[:40]
