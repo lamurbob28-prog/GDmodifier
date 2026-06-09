@@ -1,0 +1,33 @@
+name: Probe GD Network
+
+on:
+  workflow_dispatch:
+    inputs:
+      gd_username:
+        description: "Geometry Dash username to look up"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Probe GD lookup endpoint
+        env:
+          GD_USERNAME: ${{ inputs.gd_username }}
+        run: python uploader/probe_gd_network.py
