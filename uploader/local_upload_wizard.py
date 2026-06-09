@@ -92,8 +92,8 @@ def main() -> None:
     print("Detected level name:", level_name_default)
     print("")
 
-    username = ask("GD username", "SchugglyBear")
-    account_id = ask("GD accountID", "42450747")
+    username = ask("GD username", "BrotherOnGod")
+    account_id = ask("GD accountID (blank = auto lookup)", "")
     visibility = ask_choice("Visibility", ["public", "unlisted"], "public")
     upload_mode = ask_choice("Upload mode", ["modern-first", "legacy-first"], "modern-first")
     force_stock_song = ask_choice("Force stock song", ["true", "false"], "true")
