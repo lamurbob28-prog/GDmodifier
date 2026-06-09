@@ -1,0 +1,18 @@
+Classic working version marker.
+
+The known-good moment from the chat was commit:
+770a068c10b9e080445468b03583d94a861b63a0
+
+That was right after uploader/local_upload_wizard.py was added and before later easy-upload / verification changes.
+
+To use that exact version locally in Termux:
+
+cd ~/GDmodifier
+git fetch origin
+git checkout 770a068c10b9e080445468b03583d94a861b63a0
+python uploader/local_upload_wizard.py
+
+To return to the latest main version later:
+
+git switch main
+git pull
