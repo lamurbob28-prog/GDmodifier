@@ -38,6 +38,15 @@ on:
           - modern-first
           - legacy-first
         default: modern-first
+      runner:
+        description: "GitHub runner to use if one platform is blocked"
+        required: true
+        type: choice
+        options:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        default: ubuntu-latest
 
 permissions:
   contents: read
@@ -47,19 +56,26 @@ env:
 
 jobs:
   upload:
-    runs-on: ubuntu-latest
-    timeout-minutes: 6
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 8
 
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
       - name: Show selected input
+        shell: bash
         run: |
           echo "GMD path: ${{ inputs.gmd_path }}"
           echo "Username: ${{ inputs.gd_username }}"
           echo "Visibility: ${{ inputs.visibility }}"
           echo "Upload mode: ${{ inputs.upload_mode }}"
+          echo "Runner: ${{ inputs.runner }}"
 
       - name: Upload .gmd to Geometry Dash
         env:
@@ -71,11 +87,11 @@ jobs:
           DESCRIPTION_OVERRIDE: ${{ inputs.description_override }}
           VISIBILITY: ${{ inputs.visibility }}
           UPLOAD_MODE: ${{ inputs.upload_mode }}
-        run: python3 uploader/upload_gmd.py
+        run: python uploader/upload_gmd.py
 
       - name: Upload debug attempts on failure
         if: failure() && hashFiles('gdmodifier_debug_attempts.json') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: gdmodifier-debug-attempts
+          name: gdmodifier-debug-attempts-${{ inputs.runner }}
           path: gdmodifier_debug_attempts.json
