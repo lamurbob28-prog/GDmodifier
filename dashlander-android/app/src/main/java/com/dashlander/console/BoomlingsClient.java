@@ -45,7 +45,7 @@ public final class BoomlingsClient {
         payload.put("gameVersion", "22");
         payload.put("binaryVersion", "48");
         payload.put("gdw", "0");
-        payload.put("type", "0");
+        payload.put("type", "26");
         payload.put("str", levelId);
         payload.put("diff", "-");
         payload.put("len", "-");
@@ -77,7 +77,7 @@ public final class BoomlingsClient {
             }
         }
 
-        out.error = "Returned upload ID did not resolve through getGJLevels21.php yet.";
+        out.error = "Returned upload ID did not resolve through getGJLevels21.php type=26 yet.";
         return out;
     }
 
