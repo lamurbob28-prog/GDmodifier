@@ -1,6 +1,9 @@
 package com.dashlander.console;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.os.Bundle;
 import android.text.InputType;
 import android.widget.Button;
@@ -9,6 +12,9 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class MainActivity extends Activity {
@@ -21,6 +27,7 @@ public class MainActivity extends Activity {
     private String selectedXml;
     private GdLevelInfo selectedInfo;
     private UploadPreview selectedPreview;
+    private String lastLevelId = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,6 +75,18 @@ public class MainActivity extends Activity {
         upload.setText("UPLOAD to Geometry Dash");
         root.addView(upload);
 
+        Button viewReceipt = new Button(this);
+        viewReceipt.setText("View last debug receipt");
+        root.addView(viewReceipt);
+
+        Button copyLevelId = new Button(this);
+        copyLevelId.setText("Copy last level ID");
+        root.addView(copyLevelId);
+
+        Button copyLog = new Button(this);
+        copyLog.setText("Copy debug log");
+        root.addView(copyLog);
+
         log = new TextView(this);
         log.setText("Ready. Termux replacement begins here.\n");
         log.setTextSize(14);
@@ -76,6 +95,9 @@ public class MainActivity extends Activity {
         inspect.setOnClickListener(v -> inspectUploads());
         preview.setOnClickListener(v -> buildUploadPreview());
         upload.setOnClickListener(v -> uploadSelectedLevel());
+        viewReceipt.setOnClickListener(v -> viewLastReceipt());
+        copyLevelId.setOnClickListener(v -> copyLastLevelId());
+        copyLog.setOnClickListener(v -> copyDebugLog());
 
         setContentView(scroll);
     }
@@ -174,12 +196,53 @@ public class MainActivity extends Activity {
             @Override
             public void done(UploadResult result) {
                 if (result.success) {
+                    lastLevelId = result.levelId;
                     post("SUCCESS. Level ID: " + result.levelId + "\nSearch this exact ID in Geometry Dash. Do not search by name.\n");
                 } else {
                     post("ERROR: " + result.error + "\n");
                 }
             }
         });
+    }
+
+    private void viewLastReceipt() {
+        try {
+            String receipt = readInternalFile("last_upload_debug.json");
+            append("\nLast debug receipt:\n" + receipt + "\n");
+        } catch (Exception e) {
+            append("\nNo debug receipt found yet. Upload once first.\n");
+        }
+    }
+
+    private void copyLastLevelId() {
+        if (lastLevelId == null || lastLevelId.trim().isEmpty()) {
+            append("\nNo level ID to copy yet. Upload successfully first.\n");
+            return;
+        }
+        copyText("Dashlander level ID", lastLevelId);
+        append("\nCopied level ID: " + lastLevelId + "\n");
+    }
+
+    private void copyDebugLog() {
+        copyText("Dashlander debug log", log.getText().toString());
+        append("\nCopied debug log to clipboard.\n");
+    }
+
+    private String readInternalFile(String name) throws Exception {
+        File file = new File(getFilesDir(), name);
+        byte[] data = new byte[(int) file.length()];
+        try (FileInputStream fis = new FileInputStream(file)) {
+            int read = fis.read(data);
+            if (read < 0) return "";
+        }
+        return new String(data, StandardCharsets.UTF_8);
+    }
+
+    private void copyText(String label, String value) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText(label, value));
+        }
     }
 
     private String blank(String value) {
