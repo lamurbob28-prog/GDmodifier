@@ -10,9 +10,10 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -29,7 +30,11 @@ public class MainActivity extends Activity {
     private EditText usernameInput;
     private EditText accountIdInput;
     private EditText onlineNameInput;
-    private CheckBox unlistedInput;
+    private TextView visibilityLabel;
+    private RadioGroup visibilityGroup;
+    private RadioButton publicVisibilityInput;
+    private RadioButton friendsVisibilityInput;
+    private RadioButton unlistedVisibilityInput;
     private EditText passwordInput;
     private EditText confirmInput;
     private Button openLocalButton;
@@ -73,10 +78,28 @@ public class MainActivity extends Activity {
         onlineNameInput.setHint("Online level name, blank = internal k2");
         root.addView(onlineNameInput);
 
-        unlistedInput = new CheckBox(this);
-        unlistedInput.setText("Unlisted upload");
-        unlistedInput.setChecked(true);
-        root.addView(unlistedInput);
+        visibilityLabel = new TextView(this);
+        visibilityLabel.setText("Geometry Dash visibility");
+        root.addView(visibilityLabel);
+
+        visibilityGroup = new RadioGroup(this);
+        visibilityGroup.setOrientation(RadioGroup.VERTICAL);
+        publicVisibilityInput = new RadioButton(this);
+        publicVisibilityInput.setId(View.generateViewId());
+        publicVisibilityInput.setText("Public / Listed");
+        visibilityGroup.addView(publicVisibilityInput);
+
+        friendsVisibilityInput = new RadioButton(this);
+        friendsVisibilityInput.setId(View.generateViewId());
+        friendsVisibilityInput.setText("Friends only / Legacy hidden");
+        visibilityGroup.addView(friendsVisibilityInput);
+
+        unlistedVisibilityInput = new RadioButton(this);
+        unlistedVisibilityInput.setId(View.generateViewId());
+        unlistedVisibilityInput.setText("Unlisted by ID/share");
+        visibilityGroup.addView(unlistedVisibilityInput);
+        friendsVisibilityInput.setChecked(true);
+        root.addView(visibilityGroup);
 
         passwordInput = new EditText(this);
         passwordInput.setHint("GD password, not saved");
@@ -204,11 +227,19 @@ public class MainActivity extends Activity {
         settings.accountId = accountIdInput.getText().toString().trim();
         String chosenName = onlineNameInput.getText().toString().trim();
         settings.onlineLevelName = chosenName.isEmpty() && selectedInfo != null ? selectedInfo.levelName : chosenName;
-        settings.unlisted = unlistedInput.isChecked();
+        settings.unlistedValue = selectedVisibilityValue();
+        settings.unlisted = !"0".equals(settings.unlistedValue);
         settings.forceStockSong = false;
         settings.audioTrackOverride = "";
         settings.songIdOverride = "";
         return settings;
+    }
+
+    private String selectedVisibilityValue() {
+        int checkedId = visibilityGroup.getCheckedRadioButtonId();
+        if (checkedId == publicVisibilityInput.getId()) return "0";
+        if (checkedId == unlistedVisibilityInput.getId()) return "2";
+        return "1";
     }
 
     private void buildUploadPreview() {
@@ -320,7 +351,8 @@ public class MainActivity extends Activity {
         usernameInput.setVisibility(settingsVisibility);
         accountIdInput.setVisibility(settingsVisibility);
         onlineNameInput.setVisibility(settingsVisibility);
-        unlistedInput.setVisibility(settingsVisibility);
+        visibilityLabel.setVisibility(settingsVisibility);
+        visibilityGroup.setVisibility(settingsVisibility);
         passwordInput.setVisibility(settingsVisibility);
         previewButton.setVisibility(settingsVisibility);
 
