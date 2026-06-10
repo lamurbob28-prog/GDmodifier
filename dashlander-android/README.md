@@ -10,4 +10,13 @@ Current goals:
 - Save a debug receipt after every attempt.
 - Avoid a shell, Termux, Python, and local stale-file confusion.
 
-Status: alpha scaffold in progress.
+Current alpha status:
+
+- Android project scaffold exists.
+- GitHub uploads inspection is implemented.
+- GMD plist metadata parsing is implemented.
+- Create-new payload preview is implemented.
+- Boomlings upload client is implemented.
+- Live upload UI wiring is implemented behind explicit confirmation.
+
+Status: alpha build validation in progress.
