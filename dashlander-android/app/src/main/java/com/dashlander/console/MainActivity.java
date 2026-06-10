@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -32,11 +33,19 @@ public class MainActivity extends Activity {
     private CheckBox unlistedInput;
     private EditText passwordInput;
     private EditText confirmInput;
+    private Button openLocalButton;
+    private Button inspectButton;
+    private Button previewButton;
+    private Button uploadButton;
+    private Button viewReceiptButton;
+    private Button copyLevelIdButton;
+    private Button copyLogButton;
     private GitHubUploadsClient.UploadFile selectedFile;
     private String selectedXml;
     private GdLevelInfo selectedInfo;
     private UploadPreview selectedPreview;
     private String lastLevelId = "";
+    private boolean usingLocalSource = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,7 +58,7 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         TextView title = new TextView(this);
-        title.setText("Dashlander Console\nNative uploader alpha");
+        title.setText("GMD Uploader\nUpload local or GitHub .gmd files");
         title.setTextSize(22);
         root.addView(title);
 
@@ -81,48 +90,49 @@ public class MainActivity extends Activity {
         confirmInput.setHint("Type UPLOAD after preview");
         root.addView(confirmInput);
 
-        Button openLocal = new Button(this);
-        openLocal.setText("Open local .gmd file");
-        root.addView(openLocal);
+        openLocalButton = new Button(this);
+        openLocalButton.setText("Open local .gmd file");
+        root.addView(openLocalButton);
 
-        Button inspect = new Button(this);
-        inspect.setText("Inspect GitHub uploads");
-        root.addView(inspect);
+        inspectButton = new Button(this);
+        inspectButton.setText("Inspect GitHub uploads");
+        root.addView(inspectButton);
 
-        Button preview = new Button(this);
-        preview.setText("Build upload preview");
-        root.addView(preview);
+        previewButton = new Button(this);
+        previewButton.setText("Build upload preview");
+        root.addView(previewButton);
 
-        Button upload = new Button(this);
-        upload.setText("UPLOAD to Geometry Dash");
-        root.addView(upload);
+        uploadButton = new Button(this);
+        uploadButton.setText("UPLOAD to Geometry Dash");
+        root.addView(uploadButton);
 
-        Button viewReceipt = new Button(this);
-        viewReceipt.setText("View last debug receipt");
-        root.addView(viewReceipt);
+        viewReceiptButton = new Button(this);
+        viewReceiptButton.setText("View last debug receipt");
+        root.addView(viewReceiptButton);
 
-        Button copyLevelId = new Button(this);
-        copyLevelId.setText("Copy last level ID");
-        root.addView(copyLevelId);
+        copyLevelIdButton = new Button(this);
+        copyLevelIdButton.setText("Copy last level ID");
+        root.addView(copyLevelIdButton);
 
-        Button copyLog = new Button(this);
-        copyLog.setText("Copy debug log");
-        root.addView(copyLog);
+        copyLogButton = new Button(this);
+        copyLogButton.setText("Copy debug log");
+        root.addView(copyLogButton);
 
         log = new TextView(this);
-        log.setText("Ready. Termux replacement begins here.\n");
+        log.setText("Ready. Choose a local .gmd file or inspect GitHub uploads.\n");
         log.setTextSize(14);
         root.addView(log);
 
-        openLocal.setOnClickListener(v -> openLocalGmdFile());
-        inspect.setOnClickListener(v -> inspectUploads());
-        preview.setOnClickListener(v -> buildUploadPreview());
-        upload.setOnClickListener(v -> uploadSelectedLevel());
-        viewReceipt.setOnClickListener(v -> viewLastReceipt());
-        copyLevelId.setOnClickListener(v -> copyLastLevelId());
-        copyLog.setOnClickListener(v -> copyDebugLog());
+        openLocalButton.setOnClickListener(v -> openLocalGmdFile());
+        inspectButton.setOnClickListener(v -> inspectUploads());
+        previewButton.setOnClickListener(v -> buildUploadPreview());
+        uploadButton.setOnClickListener(v -> uploadSelectedLevel());
+        viewReceiptButton.setOnClickListener(v -> viewLastReceipt());
+        copyLevelIdButton.setOnClickListener(v -> copyLastLevelId());
+        copyLogButton.setOnClickListener(v -> copyDebugLog());
 
         setContentView(scroll);
+        updateUiState();
     }
 
     private void openLocalGmdFile() {
@@ -205,7 +215,13 @@ public class MainActivity extends Activity {
         selectedXml = xml;
         selectedInfo = GmdParser.parse(file.path, xml);
         selectedPreview = null;
-        runOnUiThread(() -> onlineNameInput.setText(selectedInfo.levelName));
+        lastLevelId = "";
+        usingLocalSource = file.path != null && file.path.startsWith("local/");
+        runOnUiThread(() -> {
+            onlineNameInput.setText(selectedInfo.levelName);
+            confirmInput.setText("");
+            updateUiState();
+        });
     }
 
     private void postInspectionResult() {
@@ -235,7 +251,7 @@ public class MainActivity extends Activity {
 
     private void buildUploadPreview() {
         if (selectedXml == null || selectedInfo == null) {
-            append("\nOpen a local .gmd or inspect a GitHub .gmd first. The app is not guessing, because guessing is how we got the haunted wizard.\n");
+            append("\nOpen a local .gmd or inspect a GitHub .gmd first.\n");
             return;
         }
 
@@ -245,6 +261,7 @@ public class MainActivity extends Activity {
                 selectedPreview = GdPayloadBuilder.buildPreview(selectedXml, makeSettings());
                 post("\n" + selectedPreview.summary());
                 post("No password was used. No upload sent yet. Type UPLOAD, then tap upload.\n");
+                runOnUiThread(this::updateUiState);
             } catch (Exception e) {
                 post("ERROR building preview: " + e.getMessage() + "\n");
             }
@@ -290,6 +307,7 @@ public class MainActivity extends Activity {
                 } else {
                     post("ERROR: " + result.error + "\n");
                 }
+                runOnUiThread(MainActivity.this::updateUiState);
             }
         });
     }
@@ -318,13 +336,42 @@ public class MainActivity extends Activity {
             return;
         }
         lastLevelId = id;
-        copyText("Dashlander level ID", id);
+        copyText("GMD Uploader level ID", id);
         append("\nCopied level ID: " + id + "\n");
+        updateUiState();
     }
 
     private void copyDebugLog() {
-        copyText("Dashlander debug log", log.getText().toString());
+        copyText("GMD Uploader debug log", log.getText().toString());
         append("\nCopied debug log to clipboard.\n");
+    }
+
+    private void updateUiState() {
+        boolean hasFile = selectedInfo != null && selectedXml != null;
+        boolean hasPreview = hasFile && selectedPreview != null;
+        boolean hasResult = lastLevelId != null && !lastLevelId.trim().isEmpty();
+
+        openLocalButton.setText(hasFile && usingLocalSource ? "Change local .gmd file" : "Open local .gmd file");
+        inspectButton.setText(hasFile && !usingLocalSource ? "Refresh GitHub upload" : "Inspect GitHub uploads");
+
+        openLocalButton.setVisibility(!hasFile || usingLocalSource ? View.VISIBLE : View.GONE);
+        inspectButton.setVisibility(!hasFile || !usingLocalSource ? View.VISIBLE : View.GONE);
+
+        int settingsVisibility = hasFile ? View.VISIBLE : View.GONE;
+        usernameInput.setVisibility(settingsVisibility);
+        accountIdInput.setVisibility(settingsVisibility);
+        onlineNameInput.setVisibility(settingsVisibility);
+        unlistedInput.setVisibility(settingsVisibility);
+        passwordInput.setVisibility(settingsVisibility);
+        previewButton.setVisibility(settingsVisibility);
+
+        confirmInput.setVisibility(hasPreview ? View.VISIBLE : View.GONE);
+        uploadButton.setVisibility(hasPreview ? View.VISIBLE : View.GONE);
+
+        int resultVisibility = hasResult ? View.VISIBLE : View.GONE;
+        copyLevelIdButton.setVisibility(resultVisibility);
+        viewReceiptButton.setVisibility(resultVisibility);
+        copyLogButton.setVisibility(resultVisibility);
     }
 
     private String readInternalFile(String name) throws Exception {
