@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dashlander.console'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.dashlander.console'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0-alpha'
+    }
+}
