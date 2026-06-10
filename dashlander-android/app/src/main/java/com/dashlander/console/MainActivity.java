@@ -21,7 +21,6 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_OPEN_GMD = 4107;
@@ -34,7 +33,6 @@ public class MainActivity extends Activity {
     private EditText passwordInput;
     private EditText confirmInput;
     private Button openLocalButton;
-    private Button inspectButton;
     private Button previewButton;
     private Button uploadButton;
     private Button viewReceiptButton;
@@ -45,7 +43,6 @@ public class MainActivity extends Activity {
     private GdLevelInfo selectedInfo;
     private UploadPreview selectedPreview;
     private String lastLevelId = "";
-    private boolean usingLocalSource = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,7 +55,7 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         TextView title = new TextView(this);
-        title.setText("GMD Uploader\nUpload local or GitHub .gmd files");
+        title.setText("GMD Uploader\nUpload local .gmd files");
         title.setTextSize(22);
         root.addView(title);
 
@@ -94,10 +91,6 @@ public class MainActivity extends Activity {
         openLocalButton.setText("Open local .gmd file");
         root.addView(openLocalButton);
 
-        inspectButton = new Button(this);
-        inspectButton.setText("Inspect GitHub uploads");
-        root.addView(inspectButton);
-
         previewButton = new Button(this);
         previewButton.setText("Build upload preview");
         root.addView(previewButton);
@@ -119,12 +112,11 @@ public class MainActivity extends Activity {
         root.addView(copyLogButton);
 
         log = new TextView(this);
-        log.setText("Ready. Choose a local .gmd file or inspect GitHub uploads.\n");
+        log.setText("Ready. Open a local .gmd file.\n");
         log.setTextSize(14);
         root.addView(log);
 
         openLocalButton.setOnClickListener(v -> openLocalGmdFile());
-        inspectButton.setOnClickListener(v -> inspectUploads());
         previewButton.setOnClickListener(v -> buildUploadPreview());
         uploadButton.setOnClickListener(v -> uploadSelectedLevel());
         viewReceiptButton.setOnClickListener(v -> viewLastReceipt());
@@ -181,42 +173,12 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void inspectUploads() {
-        append("\nFetching GitHub uploads...\n");
-        new Thread(() -> {
-            try {
-                GitHubUploadsClient client = new GitHubUploadsClient();
-                List<GitHubUploadsClient.UploadFile> files = client.listUploads();
-                if (files.isEmpty()) {
-                    post("No .gmd files found in GitHub uploads.\n");
-                    return;
-                }
-
-                StringBuilder listing = new StringBuilder();
-                listing.append("Found ").append(files.size()).append(" .gmd file(s):\n");
-                for (int i = 0; i < files.size(); i++) {
-                    listing.append(i + 1).append(". ").append(files.get(i).path).append('\n');
-                }
-                post(listing.toString());
-
-                GitHubUploadsClient.UploadFile firstFile = files.get(0);
-                post("\nDownloading first file for inspection: " + firstFile.path + "\n");
-                String xml = client.downloadGmd(firstFile);
-                applySelectedFile(firstFile, xml);
-                postInspectionResult();
-            } catch (Exception e) {
-                post("ERROR: " + e.getMessage() + "\n");
-            }
-        }).start();
-    }
-
     private void applySelectedFile(GitHubUploadsClient.UploadFile file, String xml) throws Exception {
         selectedFile = file;
         selectedXml = xml;
         selectedInfo = GmdParser.parse(file.path, xml);
         selectedPreview = null;
         lastLevelId = "";
-        usingLocalSource = file.path != null && file.path.startsWith("local/");
         runOnUiThread(() -> {
             onlineNameInput.setText(selectedInfo.levelName);
             confirmInput.setText("");
@@ -251,7 +213,7 @@ public class MainActivity extends Activity {
 
     private void buildUploadPreview() {
         if (selectedXml == null || selectedInfo == null) {
-            append("\nOpen a local .gmd or inspect a GitHub .gmd first.\n");
+            append("\nOpen a local .gmd first.\n");
             return;
         }
 
@@ -270,7 +232,7 @@ public class MainActivity extends Activity {
 
     private void uploadSelectedLevel() {
         if (selectedXml == null || selectedInfo == null) {
-            append("\nOpen a local .gmd or inspect a GitHub .gmd first.\n");
+            append("\nOpen a local .gmd first.\n");
             return;
         }
         if (!"UPLOAD".equals(confirmInput.getText().toString().trim())) {
@@ -351,11 +313,8 @@ public class MainActivity extends Activity {
         boolean hasPreview = hasFile && selectedPreview != null;
         boolean hasResult = lastLevelId != null && !lastLevelId.trim().isEmpty();
 
-        openLocalButton.setText(hasFile && usingLocalSource ? "Change local .gmd file" : "Open local .gmd file");
-        inspectButton.setText(hasFile && !usingLocalSource ? "Refresh GitHub upload" : "Inspect GitHub uploads");
-
-        openLocalButton.setVisibility(!hasFile || usingLocalSource ? View.VISIBLE : View.GONE);
-        inspectButton.setVisibility(!hasFile || !usingLocalSource ? View.VISIBLE : View.GONE);
+        openLocalButton.setText(hasFile ? "Change local .gmd file" : "Open local .gmd file");
+        openLocalButton.setVisibility(View.VISIBLE);
 
         int settingsVisibility = hasFile ? View.VISIBLE : View.GONE;
         usernameInput.setVisibility(settingsVisibility);
