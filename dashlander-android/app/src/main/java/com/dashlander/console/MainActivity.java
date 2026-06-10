@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
 
         inspect.setOnClickListener(v -> inspectUploads());
         preview.setOnClickListener(v -> buildUploadPreview());
-        upload.setOnClickListener(v -> append("\nLive upload handler comes next. Fields are ready.\n"));
+        upload.setOnClickListener(v -> uploadSelectedLevel());
 
         setContentView(scroll);
     }
@@ -146,6 +146,40 @@ public class MainActivity extends Activity {
                 post("ERROR building preview: " + e.getMessage() + "\n");
             }
         }).start();
+    }
+
+    private void uploadSelectedLevel() {
+        if (selectedPreview == null) {
+            append("\nBuild preview first. No blind firing.\n");
+            return;
+        }
+        if (!"UPLOAD".equals(confirmInput.getText().toString().trim())) {
+            append("\nType UPLOAD in the confirmation box first.\n");
+            return;
+        }
+        String secret = passwordInput.getText().toString();
+        if (secret.trim().isEmpty()) {
+            append("\nPassword is empty. Not uploading.\n");
+            return;
+        }
+
+        append("\nUploading to Geometry Dash...\n");
+        UploadSettings settings = makeSettings();
+        new DashlanderUploadController(this).upload(selectedFile, selectedInfo, selectedPreview, settings, secret, new DashlanderUploadController.Callback() {
+            @Override
+            public void log(String message) {
+                post(message);
+            }
+
+            @Override
+            public void done(UploadResult result) {
+                if (result.success) {
+                    post("SUCCESS. Level ID: " + result.levelId + "\nSearch this exact ID in Geometry Dash. Do not search by name.\n");
+                } else {
+                    post("ERROR: " + result.error + "\n");
+                }
+            }
+        });
     }
 
     private String blank(String value) {
