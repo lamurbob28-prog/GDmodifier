@@ -7,8 +7,13 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.List;
+
 public class MainActivity extends Activity {
     private TextView log;
+    private GitHubUploadsClient.UploadFile selectedFile;
+    private String selectedXml;
+    private GdLevelInfo selectedInfo;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,10 +43,56 @@ public class MainActivity extends Activity {
         log.setTextSize(14);
         root.addView(log);
 
-        inspect.setOnClickListener(v -> append("Inspect flow not wired yet.\n"));
-        upload.setOnClickListener(v -> append("Upload flow not wired yet.\n"));
+        inspect.setOnClickListener(v -> inspectUploads());
+        upload.setOnClickListener(v -> append("Upload engine not wired yet. First we prove fetch + inspect works.\n"));
 
         setContentView(scroll);
+    }
+
+    private void inspectUploads() {
+        append("\nFetching GitHub uploads...\n");
+        new Thread(() -> {
+            try {
+                GitHubUploadsClient client = new GitHubUploadsClient();
+                List<GitHubUploadsClient.UploadFile> files = client.listUploads();
+                if (files.isEmpty()) {
+                    post("No .gmd files found in GitHub uploads.\n");
+                    return;
+                }
+
+                StringBuilder listing = new StringBuilder();
+                listing.append("Found ").append(files.size()).append(" .gmd file(s):\n");
+                for (int i = 0; i < files.size(); i++) {
+                    listing.append(i + 1).append(". ").append(files.get(i).path).append('\n');
+                }
+                post(listing.toString());
+
+                selectedFile = files.get(0);
+                post("\nDownloading first file for inspection: " + selectedFile.path + "\n");
+                selectedXml = client.downloadGmd(selectedFile);
+                selectedInfo = GmdParser.parse(selectedFile.path, selectedXml);
+
+                post("\nInspection result:\n" +
+                        "Source: " + selectedInfo.sourceName + "\n" +
+                        "Internal name k2: " + selectedInfo.levelName + "\n" +
+                        "Original online ID k1: " + blank(selectedInfo.originalLevelId) + "\n" +
+                        "Objects k48: " + selectedInfo.objects + "\n" +
+                        "Song k45: " + selectedInfo.songId + "\n" +
+                        "Audio track k8: " + selectedInfo.audioTrack + "\n" +
+                        "Level string length: " + selectedInfo.levelStringLength + "\n" +
+                        "Level string sha256: " + selectedInfo.levelStringHash.substring(0, Math.min(16, selectedInfo.levelStringHash.length())) + "...\n");
+            } catch (Exception e) {
+                post("ERROR: " + e.getMessage() + "\n");
+            }
+        }).start();
+    }
+
+    private String blank(String value) {
+        return value == null || value.trim().isEmpty() ? "(blank)" : value;
+    }
+
+    private void post(String text) {
+        runOnUiThread(() -> append(text));
     }
 
     private void append(String text) {
