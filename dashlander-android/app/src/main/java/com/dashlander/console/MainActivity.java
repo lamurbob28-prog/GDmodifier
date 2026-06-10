@@ -7,6 +7,7 @@ import android.content.Context;
 import android.os.Bundle;
 import android.text.InputType;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -23,6 +24,8 @@ public class MainActivity extends Activity {
     private TextView log;
     private EditText usernameInput;
     private EditText accountIdInput;
+    private EditText onlineNameInput;
+    private CheckBox unlistedInput;
     private EditText passwordInput;
     private EditText confirmInput;
     private GitHubUploadsClient.UploadFile selectedFile;
@@ -55,6 +58,15 @@ public class MainActivity extends Activity {
         accountIdInput.setHint("GD accountID, blank = auto lookup");
         accountIdInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         root.addView(accountIdInput);
+
+        onlineNameInput = new EditText(this);
+        onlineNameInput.setHint("Online level name, blank = internal k2");
+        root.addView(onlineNameInput);
+
+        unlistedInput = new CheckBox(this);
+        unlistedInput.setText("Unlisted upload");
+        unlistedInput.setChecked(true);
+        root.addView(unlistedInput);
 
         passwordInput = new EditText(this);
         passwordInput.setHint("GD password, not saved");
@@ -127,6 +139,10 @@ public class MainActivity extends Activity {
                 selectedXml = client.downloadGmd(selectedFile);
                 selectedInfo = GmdParser.parse(selectedFile.path, selectedXml);
 
+                if (onlineNameInput.getText().toString().trim().isEmpty()) {
+                    runOnUiThread(() -> onlineNameInput.setText(selectedInfo.levelName));
+                }
+
                 post("\nInspection result:\n" +
                         "Source: " + selectedInfo.sourceName + "\n" +
                         "Internal name k2: " + selectedInfo.levelName + "\n" +
@@ -146,8 +162,9 @@ public class MainActivity extends Activity {
         UploadSettings settings = new UploadSettings();
         settings.username = usernameInput.getText().toString().trim();
         settings.accountId = accountIdInput.getText().toString().trim();
-        settings.onlineLevelName = selectedInfo == null ? "" : selectedInfo.levelName;
-        settings.unlisted = true;
+        String chosenName = onlineNameInput.getText().toString().trim();
+        settings.onlineLevelName = chosenName.isEmpty() && selectedInfo != null ? selectedInfo.levelName : chosenName;
+        settings.unlisted = unlistedInput.isChecked();
         settings.forceStockSong = false;
         settings.audioTrackOverride = "";
         settings.songIdOverride = "";
