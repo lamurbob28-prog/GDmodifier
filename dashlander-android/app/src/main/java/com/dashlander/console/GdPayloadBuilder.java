@@ -20,6 +20,8 @@ public final class GdPayloadBuilder {
 
         String originalSongId = data.getOrDefault("k45", "0");
         String originalAudioTrack = data.getOrDefault("k8", "0");
+        String songList = data.getOrDefault("k104", "");
+        String sfxList = data.getOrDefault("k105", "");
         String songId;
         String audioTrack;
 
@@ -48,6 +50,8 @@ public final class GdPayloadBuilder {
         payload.put("original", "0");
         payload.put("twoPlayer", data.getOrDefault("k43", "0"));
         payload.put("songID", songId);
+        putIfNotBlank(payload, "songIDs", songList);
+        putIfNotBlank(payload, "sfxIDs", sfxList);
         payload.put("objects", data.getOrDefault("k48", "0"));
         payload.put("coins", countCoins(data));
         payload.put("requestedStars", data.getOrDefault("k66", "0"));
@@ -85,6 +89,12 @@ public final class GdPayloadBuilder {
         if (!isBlank(data.get("k62"))) count++;
         if (!isBlank(data.get("k63"))) count++;
         return String.valueOf(count);
+    }
+
+    private static void putIfNotBlank(Map<String, String> payload, String key, String value) {
+        if (!isBlank(value)) {
+            payload.put(key, value.trim());
+        }
     }
 
     private static boolean isPositive(String value) {
