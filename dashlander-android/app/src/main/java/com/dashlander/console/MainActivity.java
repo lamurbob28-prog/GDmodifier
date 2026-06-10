@@ -190,8 +190,8 @@ public class MainActivity extends Activity {
     }
 
     private void uploadSelectedLevel() {
-        if (selectedPreview == null) {
-            append("\nBuild preview first. No blind firing.\n");
+        if (selectedXml == null || selectedInfo == null) {
+            append("\nInspect a GitHub .gmd first.\n");
             return;
         }
         if (!"UPLOAD".equals(confirmInput.getText().toString().trim())) {
@@ -201,6 +201,14 @@ public class MainActivity extends Activity {
         String secret = passwordInput.getText().toString();
         if (secret.trim().isEmpty()) {
             append("\nPassword is empty. Not uploading.\n");
+            return;
+        }
+
+        try {
+            selectedPreview = GdPayloadBuilder.buildPreview(selectedXml, makeSettings());
+            append("\nRebuilt upload preview from current fields.\n" + selectedPreview.summary());
+        } catch (Exception e) {
+            append("\nERROR rebuilding preview before upload: " + e.getMessage() + "\n");
             return;
         }
 
