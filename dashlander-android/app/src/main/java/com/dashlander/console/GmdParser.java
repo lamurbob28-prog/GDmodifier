@@ -21,7 +21,7 @@ public final class GmdParser {
         String levelString = data.getOrDefault("k4", "");
 
         if (!data.containsKey("k2") || levelString.length() < 20) {
-            throw new IllegalArgumentException("This does not look like a normal plist-style .gmd export.");
+            throw new IllegalArgumentException("This does not look like a normal .gmd export. Missing k2 or k4.");
         }
 
         GdLevelInfo info = new GdLevelInfo();
@@ -53,13 +53,9 @@ public final class GmdParser {
                 new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))
         );
         Element root = document.getDocumentElement();
-        NodeList dicts = root.getElementsByTagName("dict");
-        if (dicts.getLength() == 0) {
-            throw new IllegalArgumentException("No plist dictionary found.");
-        }
+        Node container = findTopLevelDictionary(root);
 
-        Node dict = dicts.item(0);
-        NodeList children = dict.getChildNodes();
+        NodeList children = container.getChildNodes();
         Map<String, String> out = new HashMap<>();
         String pendingKey = null;
 
@@ -85,6 +81,25 @@ public final class GmdParser {
             }
         }
         return out;
+    }
+
+    private static Node findTopLevelDictionary(Element root) {
+        String rootTag = root.getNodeName();
+        if ("d".equals(rootTag) || "dict".equals(rootTag)) {
+            return root;
+        }
+
+        NodeList dicts = root.getElementsByTagName("dict");
+        if (dicts.getLength() > 0) {
+            return dicts.item(0);
+        }
+
+        NodeList compactDicts = root.getElementsByTagName("d");
+        if (compactDicts.getLength() > 0) {
+            return compactDicts.item(0);
+        }
+
+        throw new IllegalArgumentException("No .gmd dictionary found. Expected <d>, <dict>, or <plist><dict>.");
     }
 
     private static String sha256(String text) throws Exception {
