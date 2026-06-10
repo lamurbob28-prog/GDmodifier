@@ -37,6 +37,50 @@ public final class BoomlingsClient {
         return result;
     }
 
+    public LevelVerifyResult verifyLevelId(String levelId) throws Exception {
+        LevelVerifyResult out = new LevelVerifyResult();
+        out.levelId = levelId;
+
+        Map<String, String> payload = new LinkedHashMap<>();
+        payload.put("gameVersion", "22");
+        payload.put("binaryVersion", "48");
+        payload.put("gdw", "0");
+        payload.put("type", "0");
+        payload.put("str", levelId);
+        payload.put("diff", "-");
+        payload.put("len", "-");
+        payload.put("page", "0");
+        payload.put("total", "0");
+        payload.put("uncompleted", "0");
+        payload.put("onlyCompleted", "0");
+        payload.put("featured", "0");
+        payload.put("original", "0");
+        payload.put("twoPlayer", "0");
+        payload.put("coins", "0");
+        payload.put("epic", "0");
+        payload.put("secret", "Wmfd2893gb7");
+
+        UploadResult result = postWithFallback("getGJLevels21.php", payload);
+        out.attempts.addAll(result.attempts);
+
+        for (UploadAttempt attempt : result.attempts) {
+            String body = attempt.body == null ? "" : attempt.body.trim();
+            if (body.startsWith("-") || attempt.blockedLooking()) {
+                continue;
+            }
+            String firstPart = body.split("#", 2)[0];
+            Map<String, String> parsed = parseColonMap(firstPart);
+            if (levelId.equals(parsed.get("1"))) {
+                out.found = true;
+                out.levelName = parsed.get("2") == null ? "" : parsed.get("2");
+                return out;
+            }
+        }
+
+        out.error = "Returned upload ID did not resolve through getGJLevels21.php yet.";
+        return out;
+    }
+
     public AccountLookupResult lookupAccountId(String username) throws Exception {
         AccountLookupResult out = new AccountLookupResult();
         Map<String, String> payload = new LinkedHashMap<>();
@@ -166,6 +210,14 @@ public final class BoomlingsClient {
     public static class AccountLookupResult {
         public boolean success = false;
         public String accountId = "";
+        public String error = "";
+        public final java.util.List<UploadAttempt> attempts = new java.util.ArrayList<>();
+    }
+
+    public static class LevelVerifyResult {
+        public boolean found = false;
+        public String levelId = "";
+        public String levelName = "";
         public String error = "";
         public final java.util.List<UploadAttempt> attempts = new java.util.ArrayList<>();
     }
