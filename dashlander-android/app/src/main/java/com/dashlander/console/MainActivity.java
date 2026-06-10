@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.widget.Button;
@@ -21,6 +23,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class MainActivity extends Activity {
+    private static final int REQUEST_OPEN_GMD = 4107;
+
     private TextView log;
     private EditText usernameInput;
     private EditText accountIdInput;
@@ -77,6 +81,10 @@ public class MainActivity extends Activity {
         confirmInput.setHint("Type UPLOAD after preview");
         root.addView(confirmInput);
 
+        Button openLocal = new Button(this);
+        openLocal.setText("Open local .gmd file");
+        root.addView(openLocal);
+
         Button inspect = new Button(this);
         inspect.setText("Inspect GitHub uploads");
         root.addView(inspect);
@@ -106,6 +114,7 @@ public class MainActivity extends Activity {
         log.setTextSize(14);
         root.addView(log);
 
+        openLocal.setOnClickListener(v -> openLocalGmdFile());
         inspect.setOnClickListener(v -> inspectUploads());
         preview.setOnClickListener(v -> buildUploadPreview());
         upload.setOnClickListener(v -> uploadSelectedLevel());
@@ -114,6 +123,52 @@ public class MainActivity extends Activity {
         copyLog.setOnClickListener(v -> copyDebugLog());
 
         setContentView(scroll);
+    }
+
+    private void openLocalGmdFile() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(Intent.createChooser(intent, "Open .gmd file"), REQUEST_OPEN_GMD);
+        } catch (Exception e) {
+            append("\nERROR opening Android file picker: " + e.getMessage() + "\n");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_OPEN_GMD) {
+            return;
+        }
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            append("\nNo local .gmd selected.\n");
+            return;
+        }
+
+        Uri uri = data.getData();
+        try {
+            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception ignored) {
+        }
+        inspectLocalGmd(uri);
+    }
+
+    private void inspectLocalGmd(Uri uri) {
+        append("\nOpening local .gmd file...\n");
+        new Thread(() -> {
+            try {
+                LocalGmdFile local = LocalGmdReader.read(this, uri);
+                applySelectedFile(local.asUploadFile(), local.xml);
+                post("\nLoaded local file: " + local.displayName + "\n");
+                postInspectionResult();
+            } catch (Exception e) {
+                post("ERROR loading local .gmd: " + e.getMessage() + "\n");
+            }
+        }).start();
     }
 
     private void inspectUploads() {
@@ -134,28 +189,35 @@ public class MainActivity extends Activity {
                 }
                 post(listing.toString());
 
-                selectedFile = files.get(0);
-                post("\nDownloading first file for inspection: " + selectedFile.path + "\n");
-                selectedXml = client.downloadGmd(selectedFile);
-                selectedInfo = GmdParser.parse(selectedFile.path, selectedXml);
-
-                if (onlineNameInput.getText().toString().trim().isEmpty()) {
-                    runOnUiThread(() -> onlineNameInput.setText(selectedInfo.levelName));
-                }
-
-                post("\nInspection result:\n" +
-                        "Source: " + selectedInfo.sourceName + "\n" +
-                        "Internal name k2: " + selectedInfo.levelName + "\n" +
-                        "Original online ID k1: " + blank(selectedInfo.originalLevelId) + "\n" +
-                        "Objects k48: " + selectedInfo.objects + "\n" +
-                        "Song k45: " + selectedInfo.songId + "\n" +
-                        "Audio track k8: " + selectedInfo.audioTrack + "\n" +
-                        "Level string length: " + selectedInfo.levelStringLength + "\n" +
-                        "Level string sha256: " + selectedInfo.levelStringHash.substring(0, Math.min(16, selectedInfo.levelStringHash.length())) + "...\n");
+                GitHubUploadsClient.UploadFile firstFile = files.get(0);
+                post("\nDownloading first file for inspection: " + firstFile.path + "\n");
+                String xml = client.downloadGmd(firstFile);
+                applySelectedFile(firstFile, xml);
+                postInspectionResult();
             } catch (Exception e) {
                 post("ERROR: " + e.getMessage() + "\n");
             }
         }).start();
+    }
+
+    private void applySelectedFile(GitHubUploadsClient.UploadFile file, String xml) throws Exception {
+        selectedFile = file;
+        selectedXml = xml;
+        selectedInfo = GmdParser.parse(file.path, xml);
+        selectedPreview = null;
+        runOnUiThread(() -> onlineNameInput.setText(selectedInfo.levelName));
+    }
+
+    private void postInspectionResult() {
+        post("\nInspection result:\n" +
+                "Source: " + selectedInfo.sourceName + "\n" +
+                "Internal name k2: " + selectedInfo.levelName + "\n" +
+                "Original online ID k1: " + blank(selectedInfo.originalLevelId) + "\n" +
+                "Objects k48: " + selectedInfo.objects + "\n" +
+                "Song k45: " + selectedInfo.songId + "\n" +
+                "Audio track k8: " + selectedInfo.audioTrack + "\n" +
+                "Level string length: " + selectedInfo.levelStringLength + "\n" +
+                "Level string sha256: " + selectedInfo.levelStringHash.substring(0, Math.min(16, selectedInfo.levelStringHash.length())) + "...\n");
     }
 
     private UploadSettings makeSettings() {
@@ -173,7 +235,7 @@ public class MainActivity extends Activity {
 
     private void buildUploadPreview() {
         if (selectedXml == null || selectedInfo == null) {
-            append("\nInspect a GitHub .gmd first. The app is not guessing, because guessing is how we got the haunted wizard.\n");
+            append("\nOpen a local .gmd or inspect a GitHub .gmd first. The app is not guessing, because guessing is how we got the haunted wizard.\n");
             return;
         }
 
@@ -191,7 +253,7 @@ public class MainActivity extends Activity {
 
     private void uploadSelectedLevel() {
         if (selectedXml == null || selectedInfo == null) {
-            append("\nInspect a GitHub .gmd first.\n");
+            append("\nOpen a local .gmd or inspect a GitHub .gmd first.\n");
             return;
         }
         if (!"UPLOAD".equals(confirmInput.getText().toString().trim())) {
