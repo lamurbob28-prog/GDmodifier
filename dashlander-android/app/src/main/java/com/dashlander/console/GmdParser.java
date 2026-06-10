@@ -31,6 +31,8 @@ public final class GmdParser {
         info.creator = data.getOrDefault("k5", "");
         info.songId = data.getOrDefault("k45", "0");
         info.audioTrack = data.getOrDefault("k8", "0");
+        info.songIds = data.getOrDefault("k104", "");
+        info.sfxIds = data.getOrDefault("k105", "");
         info.objects = data.getOrDefault("k48", "0");
         info.levelLength = data.getOrDefault("k23", "0");
         info.levelStringLength = levelString.length();
