@@ -2,7 +2,9 @@ package com.dashlander.console;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.text.InputType;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -11,6 +13,10 @@ import java.util.List;
 
 public class MainActivity extends Activity {
     private TextView log;
+    private EditText usernameInput;
+    private EditText accountIdInput;
+    private EditText passwordInput;
+    private EditText confirmInput;
     private GitHubUploadsClient.UploadFile selectedFile;
     private String selectedXml;
     private GdLevelInfo selectedInfo;
@@ -31,12 +37,35 @@ public class MainActivity extends Activity {
         title.setTextSize(22);
         root.addView(title);
 
+        usernameInput = new EditText(this);
+        usernameInput.setHint("GD username");
+        usernameInput.setText("BrotherOnGod");
+        root.addView(usernameInput);
+
+        accountIdInput = new EditText(this);
+        accountIdInput.setHint("GD accountID, blank = auto lookup");
+        accountIdInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        root.addView(accountIdInput);
+
+        passwordInput = new EditText(this);
+        passwordInput.setHint("GD password, not saved");
+        passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        root.addView(passwordInput);
+
+        confirmInput = new EditText(this);
+        confirmInput.setHint("Type UPLOAD after preview");
+        root.addView(confirmInput);
+
         Button inspect = new Button(this);
         inspect.setText("Inspect GitHub uploads");
         root.addView(inspect);
 
+        Button preview = new Button(this);
+        preview.setText("Build upload preview");
+        root.addView(preview);
+
         Button upload = new Button(this);
-        upload.setText("Build upload preview");
+        upload.setText("UPLOAD to Geometry Dash");
         root.addView(upload);
 
         log = new TextView(this);
@@ -45,7 +74,8 @@ public class MainActivity extends Activity {
         root.addView(log);
 
         inspect.setOnClickListener(v -> inspectUploads());
-        upload.setOnClickListener(v -> buildUploadPreview());
+        preview.setOnClickListener(v -> buildUploadPreview());
+        upload.setOnClickListener(v -> append("\nLive upload handler comes next. Fields are ready.\n"));
 
         setContentView(scroll);
     }
@@ -88,6 +118,18 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private UploadSettings makeSettings() {
+        UploadSettings settings = new UploadSettings();
+        settings.username = usernameInput.getText().toString().trim();
+        settings.accountId = accountIdInput.getText().toString().trim();
+        settings.onlineLevelName = selectedInfo == null ? "" : selectedInfo.levelName;
+        settings.unlisted = true;
+        settings.forceStockSong = false;
+        settings.audioTrackOverride = "";
+        settings.songIdOverride = "";
+        return settings;
+    }
+
     private void buildUploadPreview() {
         if (selectedXml == null || selectedInfo == null) {
             append("\nInspect a GitHub .gmd first. The app is not guessing, because guessing is how we got the haunted wizard.\n");
@@ -97,16 +139,9 @@ public class MainActivity extends Activity {
         append("\nBuilding create-new upload preview...\n");
         new Thread(() -> {
             try {
-                UploadSettings settings = new UploadSettings();
-                settings.onlineLevelName = selectedInfo.levelName;
-                settings.unlisted = true;
-                settings.forceStockSong = false;
-                settings.audioTrackOverride = "";
-                settings.songIdOverride = "";
-
-                selectedPreview = GdPayloadBuilder.buildPreview(selectedXml, settings);
+                selectedPreview = GdPayloadBuilder.buildPreview(selectedXml, makeSettings());
                 post("\n" + selectedPreview.summary());
-                post("This is only a preview. No password asked. No upload sent.\n");
+                post("No password was used. No upload sent yet. Type UPLOAD, then tap upload.\n");
             } catch (Exception e) {
                 post("ERROR building preview: " + e.getMessage() + "\n");
             }
