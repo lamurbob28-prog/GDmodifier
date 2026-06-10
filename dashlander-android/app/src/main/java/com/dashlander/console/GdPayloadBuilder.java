@@ -55,7 +55,7 @@ public final class GdPayloadBuilder {
         payload.put("objects", data.getOrDefault("k48", "0"));
         payload.put("coins", countCoins(data));
         payload.put("requestedStars", data.getOrDefault("k66", "0"));
-        payload.put("unlisted", settings.unlisted ? "1" : "0");
+        payload.put("unlisted", normalizeUnlistedValue(settings.unlistedValue, settings.unlisted));
         payload.put("ldm", data.getOrDefault("k72", "0"));
         payload.put("levelString", levelString);
         payload.put("seed2", GdCrypto.chk(uploadSeed(levelString), "41274", "xI25fpAapCQg"));
@@ -89,6 +89,13 @@ public final class GdPayloadBuilder {
         if (!isBlank(data.get("k62"))) count++;
         if (!isBlank(data.get("k63"))) count++;
         return String.valueOf(count);
+    }
+
+    private static String normalizeUnlistedValue(String value, boolean legacyUnlisted) {
+        if ("0".equals(value) || "1".equals(value) || "2".equals(value)) {
+            return value;
+        }
+        return legacyUnlisted ? "1" : "0";
     }
 
     private static void putIfNotBlank(Map<String, String> payload, String key, String value) {
