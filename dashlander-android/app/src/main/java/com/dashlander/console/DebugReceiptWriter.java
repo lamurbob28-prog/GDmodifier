@@ -24,6 +24,8 @@ public final class DebugReceiptWriter {
             inspection.put("k5_creator", info.creator);
             inspection.put("k45_songId", info.songId);
             inspection.put("k8_audioTrack", info.audioTrack);
+            inspection.put("k104_songIds", info.songIds);
+            inspection.put("k105_sfxIds", info.sfxIds);
             inspection.put("k48_objects", info.objects);
             inspection.put("levelStringLength", info.levelStringLength);
             inspection.put("levelStringHash", info.levelStringHash);
@@ -37,6 +39,8 @@ public final class DebugReceiptWriter {
             payload.put("objects", preview.payload.get("objects"));
             payload.put("songID", preview.payload.get("songID"));
             payload.put("audioTrack", preview.payload.get("audioTrack"));
+            payload.put("songIDs", preview.payload.get("songIDs"));
+            payload.put("sfxIDs", preview.payload.get("sfxIDs"));
             payload.put("unlisted", preview.payload.get("unlisted"));
             payload.put("levelString", "<omitted length=" + preview.levelStringLength + " sha256=" + preview.levelStringHash + ">");
         }
