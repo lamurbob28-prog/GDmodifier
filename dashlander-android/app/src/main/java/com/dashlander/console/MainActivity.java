@@ -14,6 +14,7 @@ public class MainActivity extends Activity {
     private GitHubUploadsClient.UploadFile selectedFile;
     private String selectedXml;
     private GdLevelInfo selectedInfo;
+    private UploadPreview selectedPreview;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,7 +36,7 @@ public class MainActivity extends Activity {
         root.addView(inspect);
 
         Button upload = new Button(this);
-        upload.setText("Upload selected level");
+        upload.setText("Build upload preview");
         root.addView(upload);
 
         log = new TextView(this);
@@ -44,7 +45,7 @@ public class MainActivity extends Activity {
         root.addView(log);
 
         inspect.setOnClickListener(v -> inspectUploads());
-        upload.setOnClickListener(v -> append("Upload engine not wired yet. First we prove fetch + inspect works.\n"));
+        upload.setOnClickListener(v -> buildUploadPreview());
 
         setContentView(scroll);
     }
@@ -83,6 +84,31 @@ public class MainActivity extends Activity {
                         "Level string sha256: " + selectedInfo.levelStringHash.substring(0, Math.min(16, selectedInfo.levelStringHash.length())) + "...\n");
             } catch (Exception e) {
                 post("ERROR: " + e.getMessage() + "\n");
+            }
+        }).start();
+    }
+
+    private void buildUploadPreview() {
+        if (selectedXml == null || selectedInfo == null) {
+            append("\nInspect a GitHub .gmd first. The app is not guessing, because guessing is how we got the haunted wizard.\n");
+            return;
+        }
+
+        append("\nBuilding create-new upload preview...\n");
+        new Thread(() -> {
+            try {
+                UploadSettings settings = new UploadSettings();
+                settings.onlineLevelName = selectedInfo.levelName;
+                settings.unlisted = true;
+                settings.forceStockSong = false;
+                settings.audioTrackOverride = "";
+                settings.songIdOverride = "";
+
+                selectedPreview = GdPayloadBuilder.buildPreview(selectedXml, settings);
+                post("\n" + selectedPreview.summary());
+                post("This is only a preview. No password asked. No upload sent.\n");
+            } catch (Exception e) {
+                post("ERROR building preview: " + e.getMessage() + "\n");
             }
         }).start();
     }
