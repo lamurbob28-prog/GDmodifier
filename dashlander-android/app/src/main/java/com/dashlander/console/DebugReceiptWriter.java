@@ -39,8 +39,8 @@ public final class DebugReceiptWriter {
             payload.put("objects", preview.payload.get("objects"));
             payload.put("songID", preview.payload.get("songID"));
             payload.put("audioTrack", preview.payload.get("audioTrack"));
-            payload.put("songIDs", preview.payload.get("songIDs"));
-            payload.put("sfxIDs", preview.payload.get("sfxIDs"));
+            payload.put("songIDs", safePayloadValue(preview, "songIDs"));
+            payload.put("sfxIDs", safePayloadValue(preview, "sfxIDs"));
             payload.put("unlisted", preview.payload.get("unlisted"));
             payload.put("levelString", "<omitted length=" + preview.levelStringLength + " sha256=" + preview.levelStringHash + ">");
         }
@@ -70,5 +70,10 @@ public final class DebugReceiptWriter {
             fos.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
         }
         return fileOut;
+    }
+
+    private static String safePayloadValue(UploadPreview preview, String key) {
+        String value = preview.payload.get(key);
+        return value == null ? "" : value;
     }
 }
