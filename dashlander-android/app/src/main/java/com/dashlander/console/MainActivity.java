@@ -12,6 +12,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
@@ -215,12 +217,22 @@ public class MainActivity extends Activity {
     }
 
     private void copyLastLevelId() {
-        if (lastLevelId == null || lastLevelId.trim().isEmpty()) {
+        String id = lastLevelId == null ? "" : lastLevelId.trim();
+        if (id.isEmpty()) {
+            try {
+                String receipt = readInternalFile("last_upload_debug.json");
+                JSONObject json = new JSONObject(receipt);
+                id = json.optString("levelId", "").trim();
+            } catch (Exception ignored) {
+            }
+        }
+        if (id.isEmpty()) {
             append("\nNo level ID to copy yet. Upload successfully first.\n");
             return;
         }
-        copyText("Dashlander level ID", lastLevelId);
-        append("\nCopied level ID: " + lastLevelId + "\n");
+        lastLevelId = id;
+        copyText("Dashlander level ID", id);
+        append("\nCopied level ID: " + id + "\n");
     }
 
     private void copyDebugLog() {
