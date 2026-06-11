@@ -21,10 +21,12 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_OPEN_GMD = 4107;
+    private static final int REQUEST_SAVE_EXPORTED_GMD = 4108;
 
     private TextView log;
     private EditText usernameInput;
@@ -43,8 +45,12 @@ public class MainActivity extends Activity {
     private EditText customCopyPasswordInput;
     private EditText passwordInput;
     private EditText confirmInput;
+    private EditText exportLevelIdInput;
     private Button openLocalButton;
     private Button healthCheckButton;
+    private Button downloadExportButton;
+    private Button saveExportButton;
+    private Button openExportButton;
     private Button previewButton;
     private Button uploadButton;
     private Button viewReceiptButton;
@@ -55,6 +61,8 @@ public class MainActivity extends Activity {
     private String selectedXml;
     private GdLevelInfo selectedInfo;
     private UploadPreview selectedPreview;
+    private OnlineLevelExport lastExport;
+    private String pendingExportXml = "";
     private String lastLevelId = "";
 
     @Override
@@ -155,6 +163,27 @@ public class MainActivity extends Activity {
         healthCheckButton.setText("Run health check");
         root.addView(healthCheckButton);
 
+        TextView exportLabel = new TextView(this);
+        exportLabel.setText("Export online level to .gmd");
+        root.addView(exportLabel);
+
+        exportLevelIdInput = new EditText(this);
+        exportLevelIdInput.setHint("Online level ID to export");
+        exportLevelIdInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        root.addView(exportLevelIdInput);
+
+        downloadExportButton = new Button(this);
+        downloadExportButton.setText("Download / export online level");
+        root.addView(downloadExportButton);
+
+        saveExportButton = new Button(this);
+        saveExportButton.setText("Save exported .gmd");
+        root.addView(saveExportButton);
+
+        openExportButton = new Button(this);
+        openExportButton.setText("Open exported .gmd in uploader");
+        root.addView(openExportButton);
+
         previewButton = new Button(this);
         previewButton.setText("Build upload preview");
         root.addView(previewButton);
@@ -180,12 +209,15 @@ public class MainActivity extends Activity {
         root.addView(copyLogButton);
 
         log = new TextView(this);
-        log.setText("Ready. Open a local .gmd file.\n");
+        log.setText("Ready. Open a local .gmd file or export an online level ID.\n");
         log.setTextSize(14);
         root.addView(log);
 
         openLocalButton.setOnClickListener(v -> openLocalGmdFile());
         healthCheckButton.setOnClickListener(v -> runHealthCheck());
+        downloadExportButton.setOnClickListener(v -> downloadOnlineLevelExport());
+        saveExportButton.setOnClickListener(v -> saveExportedGmd());
+        openExportButton.setOnClickListener(v -> openExportedGmdInUploader());
         previewButton.setOnClickListener(v -> buildUploadPreview());
         uploadButton.setOnClickListener(v -> uploadSelectedLevel());
         viewReceiptButton.setOnClickListener(v -> viewLastReceipt());
@@ -213,20 +245,28 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_OPEN_GMD) {
-            return;
-        }
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            append("\nNo local .gmd selected.\n");
+        if (requestCode == REQUEST_OPEN_GMD) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+                append("\nNo local .gmd selected.\n");
+                return;
+            }
+
+            Uri uri = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {
+            }
+            inspectLocalGmd(uri);
             return;
         }
 
-        Uri uri = data.getData();
-        try {
-            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } catch (Exception ignored) {
+        if (requestCode == REQUEST_SAVE_EXPORTED_GMD) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+                append("\nExport save cancelled.\n");
+                return;
+            }
+            writeExportedGmdToUri(data.getData());
         }
-        inspectLocalGmd(uri);
     }
 
     private void inspectLocalGmd(Uri uri) {
@@ -266,6 +306,83 @@ public class MainActivity extends Activity {
                 "Audio track k8: " + selectedInfo.audioTrack + "\n" +
                 "Level string length: " + selectedInfo.levelStringLength + "\n" +
                 "Level string sha256: " + selectedInfo.levelStringHash.substring(0, Math.min(16, selectedInfo.levelStringHash.length())) + "...\n");
+    }
+
+    private void downloadOnlineLevelExport() {
+        String levelId = exportLevelIdInput.getText().toString().trim();
+        if (levelId.isEmpty()) {
+            append("\nEnter an online level ID first.\n");
+            return;
+        }
+        append("\nDownloading online level " + levelId + " for .gmd export...\n");
+        new Thread(() -> {
+            try {
+                OnlineLevelExport exported = new BoomlingsClient().exportOnlineLevel(levelId);
+                for (UploadAttempt attempt : exported.attempts) {
+                    post("download status=" + attempt.status + " preview=" + attempt.preview() + "\n");
+                }
+                if (!exported.success) {
+                    lastExport = null;
+                    post("Export ERROR: " + exported.error + "\n");
+                    runOnUiThread(this::updateUiState);
+                    return;
+                }
+                lastExport = exported;
+                post("\n" + exported.summary());
+                post("Export ready. You can save the .gmd or open it in the uploader. No upload was sent.\n");
+                runOnUiThread(this::updateUiState);
+            } catch (Exception e) {
+                lastExport = null;
+                post("Export ERROR: " + e.getMessage() + "\n");
+                runOnUiThread(this::updateUiState);
+            }
+        }).start();
+    }
+
+    private void saveExportedGmd() {
+        if (lastExport == null || !lastExport.success || lastExport.xml == null || lastExport.xml.trim().isEmpty()) {
+            append("\nNo exported .gmd ready to save. Download/export a level first.\n");
+            return;
+        }
+        try {
+            pendingExportXml = lastExport.xml;
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/octet-stream");
+            intent.putExtra(Intent.EXTRA_TITLE, lastExport.fileName());
+            startActivityForResult(intent, REQUEST_SAVE_EXPORTED_GMD);
+        } catch (Exception e) {
+            append("\nERROR opening save picker: " + e.getMessage() + "\n");
+        }
+    }
+
+    private void writeExportedGmdToUri(Uri uri) {
+        try (OutputStream stream = getContentResolver().openOutputStream(uri)) {
+            if (stream == null) throw new IllegalStateException("Could not open output stream.");
+            stream.write(pendingExportXml.getBytes(StandardCharsets.UTF_8));
+            append("\nSaved exported .gmd.\n");
+        } catch (Exception e) {
+            append("\nERROR saving exported .gmd: " + e.getMessage() + "\n");
+        }
+    }
+
+    private void openExportedGmdInUploader() {
+        if (lastExport == null || !lastExport.success || lastExport.xml == null || lastExport.xml.trim().isEmpty()) {
+            append("\nNo exported .gmd ready to open. Download/export a level first.\n");
+            return;
+        }
+        try {
+            GitHubUploadsClient.UploadFile file = new GitHubUploadsClient.UploadFile(
+                    lastExport.fileName(),
+                    "exported/" + lastExport.fileName(),
+                    "online-level:" + lastExport.levelId
+            );
+            applySelectedFile(file, lastExport.xml);
+            append("\nOpened exported .gmd in uploader: " + lastExport.fileName() + "\n");
+            postInspectionResult();
+        } catch (Exception e) {
+            append("\nERROR opening exported .gmd in uploader: " + e.getMessage() + "\n");
+        }
     }
 
     private UploadSettings makeSettings() {
@@ -489,11 +606,15 @@ public class MainActivity extends Activity {
         boolean hasFile = selectedInfo != null && selectedXml != null;
         boolean hasPreview = hasFile && selectedPreview != null;
         boolean hasResult = !getLastLevelIdCandidate().isEmpty();
+        boolean hasExport = lastExport != null && lastExport.success && lastExport.xml != null && !lastExport.xml.trim().isEmpty();
         boolean customCopySelected = copyPasswordGroup != null && copyPasswordGroup.getCheckedRadioButtonId() == customCopyInput.getId();
 
         openLocalButton.setText(hasFile ? "Change local .gmd file" : "Open local .gmd file");
         openLocalButton.setVisibility(View.VISIBLE);
         healthCheckButton.setVisibility(View.VISIBLE);
+        downloadExportButton.setVisibility(View.VISIBLE);
+        saveExportButton.setVisibility(hasExport ? View.VISIBLE : View.GONE);
+        openExportButton.setVisibility(hasExport ? View.VISIBLE : View.GONE);
 
         int settingsVisibility = hasFile ? View.VISIBLE : View.GONE;
         usernameInput.setVisibility(settingsVisibility);
