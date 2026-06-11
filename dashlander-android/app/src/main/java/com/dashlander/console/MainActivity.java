@@ -27,8 +27,12 @@ import java.nio.charset.StandardCharsets;
 public class MainActivity extends Activity {
     private static final int REQUEST_OPEN_GMD = 4107;
     private static final int REQUEST_SAVE_EXPORTED_GMD = 4108;
+    private static final String MODE_UPLOAD = "upload";
+    private static final String MODE_EXPORT = "export";
 
     private TextView log;
+    private Button uploadModeButton;
+    private Button exportModeButton;
     private EditText usernameInput;
     private EditText accountIdInput;
     private EditText onlineNameInput;
@@ -45,6 +49,7 @@ public class MainActivity extends Activity {
     private EditText customCopyPasswordInput;
     private EditText passwordInput;
     private EditText confirmInput;
+    private TextView exportLabel;
     private EditText exportLevelIdInput;
     private Button openLocalButton;
     private Button healthCheckButton;
@@ -64,6 +69,7 @@ public class MainActivity extends Activity {
     private OnlineLevelExport lastExport;
     private String pendingExportXml = "";
     private String lastLevelId = "";
+    private String currentMode = MODE_UPLOAD;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,9 +82,17 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         TextView title = new TextView(this);
-        title.setText("GMD Uploader\nUpload local .gmd files");
+        title.setText("GMD Uploader\nChoose a mode");
         title.setTextSize(22);
         root.addView(title);
+
+        uploadModeButton = new Button(this);
+        uploadModeButton.setText("Upload .gmd");
+        root.addView(uploadModeButton);
+
+        exportModeButton = new Button(this);
+        exportModeButton.setText("Export by ID");
+        root.addView(exportModeButton);
 
         usernameInput = new EditText(this);
         usernameInput.setHint("GD username");
@@ -159,11 +173,7 @@ public class MainActivity extends Activity {
         openLocalButton.setText("Open local .gmd file");
         root.addView(openLocalButton);
 
-        healthCheckButton = new Button(this);
-        healthCheckButton.setText("Run health check");
-        root.addView(healthCheckButton);
-
-        TextView exportLabel = new TextView(this);
+        exportLabel = new TextView(this);
         exportLabel.setText("Export online level to .gmd");
         root.addView(exportLabel);
 
@@ -192,6 +202,10 @@ public class MainActivity extends Activity {
         uploadButton.setText("UPLOAD to Geometry Dash");
         root.addView(uploadButton);
 
+        healthCheckButton = new Button(this);
+        healthCheckButton.setText("Run health check");
+        root.addView(healthCheckButton);
+
         viewReceiptButton = new Button(this);
         viewReceiptButton.setText("View last debug receipt");
         root.addView(viewReceiptButton);
@@ -209,10 +223,12 @@ public class MainActivity extends Activity {
         root.addView(copyLogButton);
 
         log = new TextView(this);
-        log.setText("Ready. Open a local .gmd file or export an online level ID.\n");
+        log.setText("Ready. Choose Upload .gmd or Export by ID.\n");
         log.setTextSize(14);
         root.addView(log);
 
+        uploadModeButton.setOnClickListener(v -> switchMode(MODE_UPLOAD));
+        exportModeButton.setOnClickListener(v -> switchMode(MODE_EXPORT));
         openLocalButton.setOnClickListener(v -> openLocalGmdFile());
         healthCheckButton.setOnClickListener(v -> runHealthCheck());
         downloadExportButton.setOnClickListener(v -> downloadOnlineLevelExport());
@@ -226,6 +242,11 @@ public class MainActivity extends Activity {
         copyLogButton.setOnClickListener(v -> copyDebugLog());
 
         setContentView(scroll);
+        updateUiState();
+    }
+
+    private void switchMode(String mode) {
+        currentMode = MODE_EXPORT.equals(mode) ? MODE_EXPORT : MODE_UPLOAD;
         updateUiState();
     }
 
@@ -289,6 +310,7 @@ public class MainActivity extends Activity {
         selectedInfo = GmdParser.parse(file.path, xml);
         selectedPreview = null;
         lastLevelId = "";
+        currentMode = MODE_UPLOAD;
         runOnUiThread(() -> {
             onlineNameInput.setText(selectedInfo.levelName);
             confirmInput.setText("");
@@ -603,34 +625,42 @@ public class MainActivity extends Activity {
     }
 
     private void updateUiState() {
+        boolean uploadMode = MODE_UPLOAD.equals(currentMode);
+        boolean exportMode = MODE_EXPORT.equals(currentMode);
         boolean hasFile = selectedInfo != null && selectedXml != null;
-        boolean hasPreview = hasFile && selectedPreview != null;
+        boolean hasPreview = uploadMode && hasFile && selectedPreview != null;
         boolean hasResult = !getLastLevelIdCandidate().isEmpty();
         boolean hasExport = lastExport != null && lastExport.success && lastExport.xml != null && !lastExport.xml.trim().isEmpty();
         boolean customCopySelected = copyPasswordGroup != null && copyPasswordGroup.getCheckedRadioButtonId() == customCopyInput.getId();
 
-        openLocalButton.setText(hasFile ? "Change local .gmd file" : "Open local .gmd file");
-        openLocalButton.setVisibility(View.VISIBLE);
-        healthCheckButton.setVisibility(View.VISIBLE);
-        downloadExportButton.setVisibility(View.VISIBLE);
-        saveExportButton.setVisibility(hasExport ? View.VISIBLE : View.GONE);
-        openExportButton.setVisibility(hasExport ? View.VISIBLE : View.GONE);
+        uploadModeButton.setText(uploadMode ? "Upload .gmd ✓" : "Upload .gmd");
+        exportModeButton.setText(exportMode ? "Export by ID ✓" : "Export by ID");
 
-        int settingsVisibility = hasFile ? View.VISIBLE : View.GONE;
-        usernameInput.setVisibility(settingsVisibility);
-        accountIdInput.setVisibility(settingsVisibility);
-        onlineNameInput.setVisibility(settingsVisibility);
-        visibilityLabel.setVisibility(settingsVisibility);
-        visibilityGroup.setVisibility(settingsVisibility);
-        copyPasswordLabel.setVisibility(settingsVisibility);
-        copyPasswordGroup.setVisibility(settingsVisibility);
-        customCopyPasswordInput.setVisibility(hasFile && customCopySelected ? View.VISIBLE : View.GONE);
-        passwordInput.setVisibility(settingsVisibility);
-        previewButton.setVisibility(settingsVisibility);
+        openLocalButton.setText(hasFile ? "Change local .gmd file" : "Open local .gmd file");
+        openLocalButton.setVisibility(uploadMode ? View.VISIBLE : View.GONE);
+
+        exportLabel.setVisibility(exportMode ? View.VISIBLE : View.GONE);
+        exportLevelIdInput.setVisibility(exportMode ? View.VISIBLE : View.GONE);
+        downloadExportButton.setVisibility(exportMode ? View.VISIBLE : View.GONE);
+        saveExportButton.setVisibility(exportMode && hasExport ? View.VISIBLE : View.GONE);
+        openExportButton.setVisibility(exportMode && hasExport ? View.VISIBLE : View.GONE);
+
+        int uploadSettingsVisibility = uploadMode && hasFile ? View.VISIBLE : View.GONE;
+        usernameInput.setVisibility(uploadSettingsVisibility);
+        accountIdInput.setVisibility(uploadSettingsVisibility);
+        onlineNameInput.setVisibility(uploadSettingsVisibility);
+        visibilityLabel.setVisibility(uploadSettingsVisibility);
+        visibilityGroup.setVisibility(uploadSettingsVisibility);
+        copyPasswordLabel.setVisibility(uploadSettingsVisibility);
+        copyPasswordGroup.setVisibility(uploadSettingsVisibility);
+        customCopyPasswordInput.setVisibility(uploadMode && hasFile && customCopySelected ? View.VISIBLE : View.GONE);
+        passwordInput.setVisibility(uploadSettingsVisibility);
+        previewButton.setVisibility(uploadSettingsVisibility);
 
         confirmInput.setVisibility(hasPreview ? View.VISIBLE : View.GONE);
         uploadButton.setVisibility(hasPreview ? View.VISIBLE : View.GONE);
 
+        healthCheckButton.setVisibility(View.VISIBLE);
         int resultVisibility = hasResult ? View.VISIBLE : View.GONE;
         copyLevelIdButton.setVisibility(resultVisibility);
         viewReceiptButton.setVisibility(resultVisibility);
