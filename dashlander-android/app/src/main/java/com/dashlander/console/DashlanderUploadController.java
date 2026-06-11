@@ -65,7 +65,7 @@ public final class DashlanderUploadController {
                 result = client.upload(preview.payload, password);
 
                 if (result.success && result.levelId != null && !result.levelId.trim().isEmpty()) {
-                    verifyReturnedLevelId(client, result.levelId, callback);
+                    verifyReturnedLevelId(client, result, callback);
                 }
 
                 DebugReceiptWriter.write(context, selectedFile, selectedInfo, preview, result);
@@ -81,15 +81,21 @@ public final class DashlanderUploadController {
         }).start();
     }
 
-    private void verifyReturnedLevelId(BoomlingsClient client, String levelId, Callback callback) throws Exception {
+    private void verifyReturnedLevelId(BoomlingsClient client, UploadResult result, Callback callback) throws Exception {
+        String levelId = result.levelId;
+        result.verificationAttempted = true;
         callback.log("Verifying returned level ID " + levelId + "...\n");
         BoomlingsClient.LevelVerifyResult verify = client.verifyLevelId(levelId);
         for (UploadAttempt attempt : verify.attempts) {
             callback.log("verify status=" + attempt.status + " preview=" + attempt.preview() + "\n");
         }
         if (verify.found) {
+            result.verificationFound = true;
+            result.verificationLevelName = verify.levelName;
             callback.log("Verified level resolves: " + verify.levelName + "\n");
         } else {
+            result.verificationFound = false;
+            result.verificationWarning = verify.error;
             callback.log("WARNING: upload returned ID, but lookup did not resolve it yet. " + verify.error + "\n");
         }
     }
