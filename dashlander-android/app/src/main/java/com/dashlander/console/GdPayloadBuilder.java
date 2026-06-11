@@ -45,8 +45,8 @@ public final class GdPayloadBuilder {
         payload.put("levelVersion", data.getOrDefault("k16", "1"));
         payload.put("levelLength", data.getOrDefault("k23", "0"));
         payload.put("audioTrack", audioTrack);
-        payload.put("auto", "0");
-        payload.put("password", "1");
+        payload.put("auto", normalizeBinaryValue(data.getOrDefault("k33", "0")));
+        payload.put("password", normalizeCopyPassword(settings.copyPasswordValue));
         payload.put("original", "0");
         payload.put("twoPlayer", data.getOrDefault("k43", "0"));
         payload.put("songID", songId);
@@ -96,6 +96,22 @@ public final class GdPayloadBuilder {
             return value;
         }
         return legacyUnlisted ? "1" : "0";
+    }
+
+    private static String normalizeBinaryValue(String value) {
+        return "1".equals(value) ? "1" : "0";
+    }
+
+    private static String normalizeCopyPassword(String value) {
+        if (isBlank(value)) return "1";
+        String trimmed = value.trim();
+        try {
+            int parsed = Integer.parseInt(trimmed);
+            if (parsed < 0) return "1";
+            return String.valueOf(parsed);
+        } catch (Exception ignored) {
+            return "1";
+        }
     }
 
     private static void putIfNotBlank(Map<String, String> payload, String key, String value) {
