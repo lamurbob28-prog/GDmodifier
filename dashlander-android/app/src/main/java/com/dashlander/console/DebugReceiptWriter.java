@@ -41,6 +41,8 @@ public final class DebugReceiptWriter {
             payload.put("audioTrack", preview.payload.get("audioTrack"));
             payload.put("songIDs", safePayloadValue(preview, "songIDs"));
             payload.put("sfxIDs", safePayloadValue(preview, "sfxIDs"));
+            payload.put("auto", preview.payload.get("auto"));
+            payload.put("copyPassword", preview.payload.get("password"));
             payload.put("unlisted", preview.payload.get("unlisted"));
             payload.put("levelString", "<omitted length=" + preview.levelStringLength + " sha256=" + preview.levelStringHash + ">");
         }
@@ -50,6 +52,10 @@ public final class DebugReceiptWriter {
             root.put("success", result.success);
             root.put("levelId", result.levelId);
             root.put("error", result.error);
+            root.put("verificationAttempted", result.verificationAttempted);
+            root.put("verificationFound", result.verificationFound);
+            root.put("verificationLevelName", result.verificationLevelName);
+            root.put("verificationWarning", result.verificationWarning);
             JSONArray attempts = new JSONArray();
             for (UploadAttempt a : result.attempts) {
                 JSONObject item = new JSONObject();
