@@ -37,6 +37,57 @@ public final class BoomlingsClient {
         return result;
     }
 
+    public OnlineLevelExport exportOnlineLevel(String levelId) throws Exception {
+        OnlineLevelExport out = new OnlineLevelExport();
+        out.levelId = levelId == null ? "" : levelId.trim();
+        if (out.levelId.isEmpty()) {
+            out.error = "Level ID is empty.";
+            return out;
+        }
+
+        Map<String, String> payload = new LinkedHashMap<>();
+        payload.put("gameVersion", "22");
+        payload.put("binaryVersion", "48");
+        payload.put("gdw", "0");
+        payload.put("levelID", out.levelId);
+        payload.put("secret", "Wmfd2893gb7");
+
+        UploadResult result = postWithFallback("downloadGJLevel22.php", payload);
+        out.attempts.addAll(result.attempts);
+
+        for (UploadAttempt attempt : result.attempts) {
+            String body = attempt.body == null ? "" : attempt.body.trim();
+            if (body.startsWith("-") || attempt.blockedLooking()) {
+                continue;
+            }
+            String firstPart = body.split("#", 2)[0];
+            Map<String, String> level = parseColonMap(firstPart);
+            if (!out.levelId.equals(level.get("1"))) {
+                continue;
+            }
+
+            String levelString = level.get("4") == null ? "" : level.get("4");
+            String levelName = level.get("2") == null ? "" : level.get("2");
+            if (levelString.length() < 20 || levelName.trim().isEmpty()) {
+                continue;
+            }
+
+            out.success = true;
+            out.levelName = levelName;
+            out.creator = parseCreatorName(body);
+            out.songId = valueOrDefault(level.get("35"), "0");
+            out.audioTrack = valueOrDefault(level.get("12"), "0");
+            out.songIds = valueOrDefault(level.get("52"), "");
+            out.sfxIds = valueOrDefault(level.get("53"), "");
+            out.objects = valueOrDefault(level.get("45"), "0");
+            out.xml = buildGmdXmlFromServerLevel(level, out.creator);
+            return out;
+        }
+
+        out.error = "Level did not resolve or is not accessible by exact ID.";
+        return out;
+    }
+
     public LevelVerifyResult verifyLevelId(String levelId) throws Exception {
         LevelVerifyResult out = new LevelVerifyResult();
         out.levelId = levelId;
@@ -104,6 +155,84 @@ public final class BoomlingsClient {
         }
         out.error = "Account lookup failed.";
         return out;
+    }
+
+    private String buildGmdXmlFromServerLevel(Map<String, String> level, String creator) {
+        StringBuilder xml = new StringBuilder();
+        xml.append("<d>");
+        appendString(xml, "k1", level.get("1"));
+        appendString(xml, "k2", level.get("2"));
+        appendString(xml, "k3", level.get("3"));
+        appendString(xml, "k4", level.get("4"));
+        appendString(xml, "k5", creator);
+        appendInteger(xml, "k6", level.get("6"));
+        appendInteger(xml, "k8", level.get("12"));
+        appendInteger(xml, "k16", level.get("5"));
+        appendInteger(xml, "k17", level.get("13"));
+        appendInteger(xml, "k23", level.get("15"));
+        appendInteger(xml, "k33", level.get("25"));
+        appendInteger(xml, "k41", "1");
+        appendInteger(xml, "k42", level.get("30"));
+        appendInteger(xml, "k43", level.get("31"));
+        appendInteger(xml, "k45", level.get("35"));
+        appendInteger(xml, "k48", level.get("45"));
+        appendInteger(xml, "k50", "48");
+        appendInteger(xml, "k66", level.get("39"));
+        appendInteger(xml, "k72", level.get("40"));
+        appendStringIfNotBlank(xml, "k104", level.get("52"));
+        appendStringIfNotBlank(xml, "k105", level.get("53"));
+        xml.append("</d>");
+        return xml.toString();
+    }
+
+    private void appendString(StringBuilder xml, String key, String value) {
+        xml.append("<k>").append(escapeXml(key)).append("</k><s>").append(escapeXml(valueOrDefault(value, ""))).append("</s>");
+    }
+
+    private void appendStringIfNotBlank(StringBuilder xml, String key, String value) {
+        if (value == null || value.trim().isEmpty()) return;
+        appendString(xml, key, value.trim());
+    }
+
+    private void appendInteger(StringBuilder xml, String key, String value) {
+        xml.append("<k>").append(escapeXml(key)).append("</k><i>").append(escapeXml(normalizeInt(value))).append("</i>");
+    }
+
+    private String normalizeInt(String value) {
+        if (value == null || value.trim().isEmpty()) return "0";
+        try {
+            return String.valueOf(Integer.parseInt(value.trim()));
+        } catch (Exception ignored) {
+            return "0";
+        }
+    }
+
+    private String parseCreatorName(String body) {
+        try {
+            String[] sections = body.split("#");
+            if (sections.length < 2) return "";
+            String creators = sections[1];
+            if (creators.trim().isEmpty()) return "";
+            String firstCreator = creators.split("\\|", 2)[0];
+            String[] parts = firstCreator.split(":");
+            if (parts.length >= 2) return parts[1];
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
+
+    private String valueOrDefault(String value, String fallback) {
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+
+    private String escapeXml(String value) {
+        if (value == null) return "";
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
     }
 
     private UploadResult postWithFallback(String endpoint, Map<String, String> payload) throws Exception {
