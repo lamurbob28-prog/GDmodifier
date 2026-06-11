@@ -16,6 +16,8 @@ public class UploadPreview {
                 "Payload audioTrack: " + payload.get("audioTrack") + "\n" +
                 "Payload songIDs: " + blank(payload.get("songIDs")) + "\n" +
                 "Payload sfxIDs: " + blank(payload.get("sfxIDs")) + "\n" +
+                "Payload auto: " + payload.get("auto") + "\n" +
+                "Payload copy password: " + payload.get("password") + "\n" +
                 "Payload unlisted: " + payload.get("unlisted") + "\n" +
                 "Level string length: " + levelStringLength + "\n" +
                 "Level string sha256: " + levelStringHash.substring(0, Math.min(16, levelStringHash.length())) + "...\n";
