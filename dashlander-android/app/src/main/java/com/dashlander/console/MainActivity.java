@@ -35,12 +35,20 @@ public class MainActivity extends Activity {
     private RadioButton publicVisibilityInput;
     private RadioButton friendsVisibilityInput;
     private RadioButton unlistedVisibilityInput;
+    private TextView copyPasswordLabel;
+    private RadioGroup copyPasswordGroup;
+    private RadioButton freeCopyInput;
+    private RadioButton noCopyInput;
+    private RadioButton customCopyInput;
+    private EditText customCopyPasswordInput;
     private EditText passwordInput;
     private EditText confirmInput;
     private Button openLocalButton;
+    private Button healthCheckButton;
     private Button previewButton;
     private Button uploadButton;
     private Button viewReceiptButton;
+    private Button shareReceiptButton;
     private Button copyLevelIdButton;
     private Button copyLogButton;
     private GitHubUploadsClient.UploadFile selectedFile;
@@ -101,6 +109,35 @@ public class MainActivity extends Activity {
         friendsVisibilityInput.setChecked(true);
         root.addView(visibilityGroup);
 
+        copyPasswordLabel = new TextView(this);
+        copyPasswordLabel.setText("Copy password setting");
+        root.addView(copyPasswordLabel);
+
+        copyPasswordGroup = new RadioGroup(this);
+        copyPasswordGroup.setOrientation(RadioGroup.VERTICAL);
+        freeCopyInput = new RadioButton(this);
+        freeCopyInput.setId(View.generateViewId());
+        freeCopyInput.setText("Free copy");
+        copyPasswordGroup.addView(freeCopyInput);
+
+        noCopyInput = new RadioButton(this);
+        noCopyInput.setId(View.generateViewId());
+        noCopyInput.setText("No copy");
+        copyPasswordGroup.addView(noCopyInput);
+
+        customCopyInput = new RadioButton(this);
+        customCopyInput.setId(View.generateViewId());
+        customCopyInput.setText("Custom copy password");
+        copyPasswordGroup.addView(customCopyInput);
+        freeCopyInput.setChecked(true);
+        root.addView(copyPasswordGroup);
+
+        customCopyPasswordInput = new EditText(this);
+        customCopyPasswordInput.setHint("Custom copy password number");
+        customCopyPasswordInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        root.addView(customCopyPasswordInput);
+        copyPasswordGroup.setOnCheckedChangeListener((group, checkedId) -> updateUiState());
+
         passwordInput = new EditText(this);
         passwordInput.setHint("GD password, not saved");
         passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -114,6 +151,10 @@ public class MainActivity extends Activity {
         openLocalButton.setText("Open local .gmd file");
         root.addView(openLocalButton);
 
+        healthCheckButton = new Button(this);
+        healthCheckButton.setText("Run health check");
+        root.addView(healthCheckButton);
+
         previewButton = new Button(this);
         previewButton.setText("Build upload preview");
         root.addView(previewButton);
@@ -125,6 +166,10 @@ public class MainActivity extends Activity {
         viewReceiptButton = new Button(this);
         viewReceiptButton.setText("View last debug receipt");
         root.addView(viewReceiptButton);
+
+        shareReceiptButton = new Button(this);
+        shareReceiptButton.setText("Share debug receipt");
+        root.addView(shareReceiptButton);
 
         copyLevelIdButton = new Button(this);
         copyLevelIdButton.setText("Copy last level ID");
@@ -140,9 +185,11 @@ public class MainActivity extends Activity {
         root.addView(log);
 
         openLocalButton.setOnClickListener(v -> openLocalGmdFile());
+        healthCheckButton.setOnClickListener(v -> runHealthCheck());
         previewButton.setOnClickListener(v -> buildUploadPreview());
         uploadButton.setOnClickListener(v -> uploadSelectedLevel());
         viewReceiptButton.setOnClickListener(v -> viewLastReceipt());
+        shareReceiptButton.setOnClickListener(v -> shareLastReceipt());
         copyLevelIdButton.setOnClickListener(v -> copyLastLevelId());
         copyLogButton.setOnClickListener(v -> copyDebugLog());
 
@@ -229,6 +276,7 @@ public class MainActivity extends Activity {
         settings.onlineLevelName = chosenName.isEmpty() && selectedInfo != null ? selectedInfo.levelName : chosenName;
         settings.unlistedValue = selectedVisibilityValue();
         settings.unlisted = !"0".equals(settings.unlistedValue);
+        settings.copyPasswordValue = selectedCopyPasswordValue();
         settings.forceStockSong = false;
         settings.audioTrackOverride = "";
         settings.songIdOverride = "";
@@ -242,9 +290,36 @@ public class MainActivity extends Activity {
         return "1";
     }
 
+    private String selectedCopyPasswordValue() {
+        int checkedId = copyPasswordGroup.getCheckedRadioButtonId();
+        if (checkedId == noCopyInput.getId()) return "0";
+        if (checkedId == customCopyInput.getId()) return customCopyPasswordInput.getText().toString().trim();
+        return "1";
+    }
+
+    private boolean validateCopyPasswordSelection() {
+        if (copyPasswordGroup.getCheckedRadioButtonId() != customCopyInput.getId()) return true;
+        String value = customCopyPasswordInput.getText().toString().trim();
+        if (value.isEmpty()) {
+            append("\nCustom copy password is empty. Choose Free copy, No copy, or enter a number.\n");
+            return false;
+        }
+        try {
+            int parsed = Integer.parseInt(value);
+            if (parsed < 0) throw new NumberFormatException();
+            return true;
+        } catch (Exception e) {
+            append("\nCustom copy password must be a non-negative number.\n");
+            return false;
+        }
+    }
+
     private void buildUploadPreview() {
         if (selectedXml == null || selectedInfo == null) {
             append("\nOpen a local .gmd first.\n");
+            return;
+        }
+        if (!validateCopyPasswordSelection()) {
             return;
         }
 
@@ -268,6 +343,9 @@ public class MainActivity extends Activity {
         }
         if (!"UPLOAD".equals(confirmInput.getText().toString().trim())) {
             append("\nType UPLOAD in the confirmation box first.\n");
+            return;
+        }
+        if (!validateCopyPasswordSelection()) {
             return;
         }
         String secret = passwordInput.getText().toString();
@@ -296,13 +374,76 @@ public class MainActivity extends Activity {
             public void done(UploadResult result) {
                 if (result.success) {
                     lastLevelId = result.levelId;
-                    post("SUCCESS. Level ID: " + result.levelId + "\nSearch this exact ID in Geometry Dash. Do not search by name.\n");
+                    post("Upload accepted by server.\nLevel ID: " + result.levelId + "\n");
+                    if (result.verificationAttempted && result.verificationFound) {
+                        post("Verification: PASSED. Level resolves as: " + result.verificationLevelName + "\n");
+                    } else if (result.verificationAttempted) {
+                        post("Verification: WARNING. Exact ID did not resolve yet. " + result.verificationWarning + "\n");
+                    } else {
+                        post("Verification: not attempted.\n");
+                    }
+                    post("Search this exact ID in Geometry Dash. Do not search by name.\n");
                 } else {
                     post("ERROR: " + result.error + "\n");
                 }
                 runOnUiThread(MainActivity.this::updateUiState);
             }
         });
+    }
+
+    private void runHealthCheck() {
+        String username = usernameInput.getText().toString().trim();
+        append("\nRunning health check...\n");
+        new Thread(() -> {
+            try {
+                BoomlingsClient client = new BoomlingsClient();
+                if (username.isEmpty()) {
+                    post("Username is empty. Account lookup skipped.\n");
+                } else {
+                    post("Checking Boomlings account lookup for " + username + "...\n");
+                    BoomlingsClient.AccountLookupResult lookup = client.lookupAccountId(username);
+                    for (UploadAttempt attempt : lookup.attempts) {
+                        post("lookup status=" + attempt.status + " preview=" + attempt.preview() + "\n");
+                    }
+                    if (lookup.success) {
+                        post("Account lookup: PASSED. accountID=" + lookup.accountId + "\n");
+                    } else {
+                        post("Account lookup: WARNING. " + lookup.error + "\n");
+                    }
+                }
+
+                String id = getLastLevelIdCandidate();
+                if (id.isEmpty()) {
+                    post("Exact-ID verification: skipped. No previous level ID found.\n");
+                } else {
+                    post("Checking exact-ID verification for " + id + "...\n");
+                    BoomlingsClient.LevelVerifyResult verify = client.verifyLevelId(id);
+                    for (UploadAttempt attempt : verify.attempts) {
+                        post("verify status=" + attempt.status + " preview=" + attempt.preview() + "\n");
+                    }
+                    if (verify.found) {
+                        post("Exact-ID verification: PASSED. Level resolves as: " + verify.levelName + "\n");
+                    } else {
+                        post("Exact-ID verification: WARNING. " + verify.error + "\n");
+                    }
+                }
+                post("Health check finished. No upload was sent.\n");
+            } catch (Exception e) {
+                post("Health check ERROR: " + e.getMessage() + "\n");
+            }
+        }).start();
+    }
+
+    private String getLastLevelIdCandidate() {
+        String id = lastLevelId == null ? "" : lastLevelId.trim();
+        if (!id.isEmpty()) return id;
+        try {
+            String receipt = readInternalFile("last_upload_debug.json");
+            JSONObject json = new JSONObject(receipt);
+            return json.optString("levelId", "").trim();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private void viewLastReceipt() {
@@ -314,16 +455,21 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void copyLastLevelId() {
-        String id = lastLevelId == null ? "" : lastLevelId.trim();
-        if (id.isEmpty()) {
-            try {
-                String receipt = readInternalFile("last_upload_debug.json");
-                JSONObject json = new JSONObject(receipt);
-                id = json.optString("levelId", "").trim();
-            } catch (Exception ignored) {
-            }
+    private void shareLastReceipt() {
+        try {
+            String receipt = readInternalFile("last_upload_debug.json");
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_SUBJECT, "GMD Uploader debug receipt");
+            send.putExtra(Intent.EXTRA_TEXT, receipt);
+            startActivity(Intent.createChooser(send, "Share debug receipt"));
+        } catch (Exception e) {
+            append("\nNo debug receipt found yet. Upload once first.\n");
         }
+    }
+
+    private void copyLastLevelId() {
+        String id = getLastLevelIdCandidate();
         if (id.isEmpty()) {
             append("\nNo level ID to copy yet. Upload successfully first.\n");
             return;
@@ -342,10 +488,12 @@ public class MainActivity extends Activity {
     private void updateUiState() {
         boolean hasFile = selectedInfo != null && selectedXml != null;
         boolean hasPreview = hasFile && selectedPreview != null;
-        boolean hasResult = lastLevelId != null && !lastLevelId.trim().isEmpty();
+        boolean hasResult = !getLastLevelIdCandidate().isEmpty();
+        boolean customCopySelected = copyPasswordGroup != null && copyPasswordGroup.getCheckedRadioButtonId() == customCopyInput.getId();
 
         openLocalButton.setText(hasFile ? "Change local .gmd file" : "Open local .gmd file");
         openLocalButton.setVisibility(View.VISIBLE);
+        healthCheckButton.setVisibility(View.VISIBLE);
 
         int settingsVisibility = hasFile ? View.VISIBLE : View.GONE;
         usernameInput.setVisibility(settingsVisibility);
@@ -353,6 +501,9 @@ public class MainActivity extends Activity {
         onlineNameInput.setVisibility(settingsVisibility);
         visibilityLabel.setVisibility(settingsVisibility);
         visibilityGroup.setVisibility(settingsVisibility);
+        copyPasswordLabel.setVisibility(settingsVisibility);
+        copyPasswordGroup.setVisibility(settingsVisibility);
+        customCopyPasswordInput.setVisibility(hasFile && customCopySelected ? View.VISIBLE : View.GONE);
         passwordInput.setVisibility(settingsVisibility);
         previewButton.setVisibility(settingsVisibility);
 
@@ -362,6 +513,7 @@ public class MainActivity extends Activity {
         int resultVisibility = hasResult ? View.VISIBLE : View.GONE;
         copyLevelIdButton.setVisibility(resultVisibility);
         viewReceiptButton.setVisibility(resultVisibility);
+        shareReceiptButton.setVisibility(resultVisibility);
         copyLogButton.setVisibility(resultVisibility);
     }
 
