@@ -1,0 +1,71 @@
+name: Build Dashlander Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dashlander-console
+    paths:
+      - 'dashlander-android/**'
+      - '.github/workflows/build-dashlander-android.yml'
+  pull_request:
+    paths:
+      - 'dashlander-android/**'
+      - '.github/workflows/build-dashlander-android.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Gradle
+        run: |
+          set -euo pipefail
+          GRADLE_VERSION="8.10.2"
+          curl -L -o "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP/gradle"
+          echo "$RUNNER_TEMP/gradle/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Show Gradle version
+        working-directory: dashlander-android
+        run: gradle --version
+
+      - name: Build debug APK
+        working-directory: dashlander-android
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Stage APK
+        run: |
+          set -euo pipefail
+          mkdir -p dashlander-android/build-artifacts
+          cp dashlander-android/app/build/outputs/apk/debug/*.apk dashlander-android/build-artifacts/dashlander-console-debug.apk
+          ls -lh dashlander-android/build-artifacts/dashlander-console-debug.apk
+
+      - name: Publish latest APK release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="dashlander-console-latest"
+          APK="dashlander-android/build-artifacts/dashlander-console-debug.apk"
+          TITLE="Dashlander Console Latest"
+          NOTES="Auto-built debug APK from branch ${GITHUB_REF_NAME} at commit ${GITHUB_SHA}."
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK#dashlander-console-debug.apk" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" --latest
+          else
+            gh release create "$TAG" "$APK#dashlander-console-debug.apk" --title "$TITLE" --notes "$NOTES" --target "$GITHUB_SHA" --latest
+          fi
